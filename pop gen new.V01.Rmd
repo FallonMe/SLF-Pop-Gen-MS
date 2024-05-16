@@ -1,0 +1,1051 @@
+---
+title: "Pop Gen of SLF_new"
+output: html_document
+date: "2023-08-29"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Part 1: Population Structure
+
+*Uses vcf version that has only has 5% missing sites, LD 0.2, MAF 0.05*
+set plotting colors different sampling areas for consistency
+```{r plotcols}
+#read the sample meta dataset
+popdata <- read.csv("2022 SLF Info new.csv", header=T) 
+#sampling area 
+popdata$area <- as.factor(popdata$area)
+levels(popdata$area)
+location_colors <- c("Bronx" = "#252525", 
+                     "Brooklyn" =  "#e6ab02",
+                     "Camden, NJ" = "#a65628",
+                     "Connecticut" = "#e41a1c" ,
+                     "Governor Island" = "#08589e",
+                     "Manhattan" = "#c861a5",
+                     "Staten island" = "#3690c0",
+                     "West Orange, NJ" = "#009E73")
+```
+
+packages required
+```{r part4pkg, message=FALSE}
+library(ggplot2)
+library(patchwork)
+library(tidyverse)
+library(data.table)
+library(adegenet) # for dapc
+library(vcfR) # for reading in genetic data
+library(tidyverse) # for manipulating and plotting data
+library(LEA) # For sNMF
+library(rnaturalearth) #for mapping
+
+```
+
+read in population data needed for all sections
+```{r popdata}
+popdata <- read.csv("2022 SLF Info new.csv", header=T) 
+head(popdata)
+#population list in same order as bed file
+```
+
+## 1.1 PCA with pcadapt
+*requires .bed format*    
+
+packages required
+```{r part4.1pkg}
+library(pcadapt)
+```
+
+read in bed file
+```{r bedfile}
+SLF_bed <- read.pcadapt("Final.SLF.bed", type = "bed") 
+
+#specify populations -- order is by population 
+popbed <- popdata[,c("fly_ID","area")] #just population identity
+poplist.names <- popbed[,2] #just population list
+```
+
+Preliminary determination of PCs to retain
+```{r prelimPCA, warning=FALSE}
+x <- pcadapt(input = SLF_bed, K = 5)  #use large number of K  to start
+
+pdf("scree_plot.K20.pdf")
+scree <- plot(x, option = "screeplot") 
+dev.off()
+
+# Call your plotting commands,# no clear clustering
+plot(x, option = "scores", pop = poplist.names)
+
+# Compute the total variance
+total_variance <- sum(x$singular.values^2)
+
+# Compute the percentage of variance explained by each PC
+percentage_variance <- (x$singular.values^2) / total_variance * 100
+
+# Print the percentage of variance explained by each PC, each PC explain litte variance
+print(percentage_variance)
+
+```
+
+visualize PC variation to determine how many PC to retain
+```{r}
+library(ggplot2)
+
+# Convert the scores to a data frame and add population names
+x2df <- data.frame(x$scores)
+x2df$pops <- as.factor(poplist.names)  # Ensure the population names are treated as a factor
+
+# Create the plot for the first two principal components
+PC12 <- ggplot(x2df, aes(x=X1, y=X2, color=pops)) +  # Ensure column names are correctly referenced
+  geom_point(cex=2) +  # Size of the points
+  theme_bw() +  # White background theme
+  scale_color_manual(values=location_colors) +  # Use the predefined location colors
+  xlab("PC1") +  # Label for the x-axis
+  ylab("PC2") +  # Label for the y-axis
+  stat_ellipse(alpha=0.35) +  # Add ellipses to group points by population
+  theme(legend.position="right")  # Position the legend on the right side
+
+PC34 <-ggplot(x2df, aes(x=X3, y=X4, color=pops)) +  
+  geom_point(cex=2) +  # Size of the points
+  theme_bw() +
+  scale_color_manual(values=location_colors) + 
+  xlab("PC3") +  # Label for the x-axis
+  ylab("PC4") +  # Label for the y-axis
+  stat_ellipse(alpha=0.35) +  
+  theme(legend.position="right")  
+
+print(PC12)
+print(PC34)
+
+ggsave(filename = "PC12.pdf", plot = PC12)
+ggsave(filename = "PC34.pdf", plot = PC34)
+```
+
+# Part 2 : DAPC(Discriminant Analysis of Principal Components)
+This multivariate approach allows for the exploration of genetic variation by constructing synthetic variables from linear combinations of alleles, where these variables are designed to capture the essence of genetic diversity among individuals. 
+
+Run DAPC with adegenet, run the job below on hpc, it's memory demanding.
+Do not run in R markdown.
+```{r}
+# Load required libraries
+library(adegenet)
+library(vcfR)
+library(ggplot2)
+library(patchwork)
+library(tidyverse)
+library(data.table)
+
+# Set seed for reproducibility
+set.seed(0314)
+
+# Read the VCF file
+vcf <- read.vcfR("/Users/fallonmong/Documents/Documents - Fallon MacBook Pro/FallonPaper Old/10KB.maf0.01.missing0.9.id0.2.vcf")
+
+location_colors <- c("Bronx" = "#252525", 
+                     "Brooklyn" =  "#e6ab02",
+                     "Camden, NJ" = "#a65628",
+                     "Connecticut" = "#e41a1c" ,
+                     "Governor Island" = "#08589e",
+                     "Manhattan" = "#c861a5",
+                     "Staten island" = "#3690c0",
+                     "West Orange, NJ" = "#009E73")
+
+popdata <- read.csv("2022 SLF Info new.csv", header=T) 
+#link populations
+popgen_sort <- popdata[order(popdata$fly_ID),c("fly_ID","area")] 
+#ordered and reduced to just columns we need
+
+# Convert VCF to genlight object
+slf.gen = vcfR2genlight(vcf)
+
+#assigns the 'area' column of the sorted dataframe to the 'pop' slot of the genlight object.
+pop(slf.gen) <- popgen_sort[,2] #assign populations to gen file
+slf.gen@pop #verify population attribute
+
+#find cluster
+clusters_result <- find.clusters(slf.gen,parallel = require("parallel"), n.cores=8)
+
+SLF_dapc <- dapc(slf.gen, clusters_result$grp)
+
+scatter(SLF_dapc, posi.da="bottomleft")
+
+# cross-validation for the DAPC 
+optx_slf <- xvalDapc(tab(slf.gen, NA.method = "mean"), pop(slf.gen), parallel="multicore", ncpus=8L)  
+#look for leveling off window
+optx_slf[2:7]
+
+```
+
+Run DAPC after cross-validation and visualize DAPC, run it on hpc
+```{r}
+#run DAPC with the recommendation of Cross Validataion
+dapc.allsamples35 <- dapc(slf.gen,  n.pca=35, n.da=7, var.contrib=T, scale=F,parallel = require("parallel"), n.cores=12)
+
+#visualize DAPC
+# Set up a PDF device
+pdf("withlabel.New.SLF.PC35.da7.allsamples.png")
+# Plot the DAPC scatter plot
+scatter(dapc.allsamples35, clabel=0.9, col=location_colors,
+        scree.pca=FALSE, scree.da =FALSE, cell=1.5, cex=1, mstree=FALSE)  # retain 2 df
+# Turn off the device
+dev.off()
+
+```
+
+plot for posterior probability for areas
+```{r}
+table(dapc.allsamples35$grp, dapc.allsamples35$assign)
+
+# The original genetic data is stored in `SLF_gen`
+pops <- pop(slf.gen)  # access population information
+
+pops <- (pop(slf.gen))
+orderedindivid <-rep(NA,98)
+for(i in 1:98){orderedindivid[i] <- paste(pops[i], i, sep="")} 
+
+#reorder individuals so that all are within a population
+rownames(dapc.allsamples35$posterior) <- orderedindivid
+dapc.results <- as.data.frame(dapc.allsamples35$posterior)
+dapc.results$pop <- pop(slf.gen)
+dapc.results$indNames <- rownames(dapc.results)
+dapc.results <- reshape2::melt(dapc.results)
+colnames(dapc.results) <- 
+  c("Original_Pop","Sample","Assigned_Pop","Posterior_membership_probability")
+
+
+DAPC_posterior_probability_plot = ggplot(dapc.results, aes(x=Sample, y=Posterior_membership_probability,
+                                                                       fill=Assigned_Pop)) +
+  geom_bar(stat='identity') +  scale_fill_manual(values = location_colors) + 
+  facet_grid(~Original_Pop, scales = "free") + 
+  theme( axis.text.x=element_blank(),axis.ticks.x=element_blank()) + 
+  ylab("Posterior Membership Probability")
+
+# Save the ggplot object as a PNG and pdf
+ggsave(filename = "DAPC_posterior_probability_plot.png", 
+       plot = DAPC_posterior_probability_plot, 
+       width = 14, height = 5, dpi = 300)
+ggsave(filename = "DAPC_posterior_probability_plot.pdf", 
+       plot = DAPC_posterior_probability_plot, 
+       width = 14, height = 5)
+```
+
+plot just for manhanttan samples
+```{r}
+library(ggplot2)
+
+# Filter the data for samples in Manhattan
+manhattan_samples <- subset(dapc.results, Original_Pop %in% c( "Lower Manhattan", "Upper Manhattan", "Midtown Manhattan"))
+
+# Create the plot for Manhattan samples
+
+manhattan_plot <- ggplot(manhattan_samples, aes(x = Sample, y = Posterior_membership_probability, fill = Assigned_Pop)) +
+  geom_bar(stat = 'identity') +
+  scale_fill_manual(values = plotcolors) +
+  facet_grid(~ Original_Pop, scales = "free") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
+  ylab("Posterior Membership Probability") +
+  ggtitle("Posterior Probability Plot: Manhattan Samples")
+
+# Display the plot
+print(manhattan_plot)
+ggsave(filename = "Manhattan_all_SNPs_posterior_probability_plot.pdf", plot = manhattan_plot,width=14, height=5 )
+
+ggsave(filename = "Manhattan_all_SNPs_posterior_probability_plot.png", 
+       plot = manhattan_plot, 
+       width = 14, height = 5, dpi = 300)
+
+```
+
+plot for posterior probability for area(no subdivision of manhattan)
+```{r}
+table(dapc.allsamples40$grp, dapc.allsamples40$assign)
+
+# Assuming your original genetic data is stored in `SLF_gen`
+pops <- pop(slf.gen)  # access population information
+
+pops <- (pop(slf.gen))
+orderedindivid <-rep(NA,98)
+for(i in 1:98){orderedindivid[i] <- paste(pops[i], i, sep="")} 
+
+#reorder individuals so that all are within a population
+rownames(dapc.allsamples40$posterior) <- orderedindivid
+dapc.results <- as.data.frame(dapc.allsamples40$posterior)
+dapc.results$pop <- pop(slf.gen)
+dapc.results$indNames <- rownames(dapc.results)
+dapc.results <- reshape2::melt(dapc.results)
+colnames(dapc.results) <- 
+  c("Original_Pop","Sample","Assigned_Pop","Posterior_membership_probability")
+
+
+all_SNPs_posterior_probability_plot =ggplot(dapc.results, aes(x=Sample, y=Posterior_membership_probability,
+                         fill=Assigned_Pop)) +
+  geom_bar(stat='identity') +  scale_fill_manual(values = plotcolors1) + 
+  facet_grid(~Original_Pop, scales = "free") + 
+  theme( axis.text.x=element_blank(),axis.ticks.x=element_blank()) + 
+  ylab("Posterior Membership Probability")
+
+# Save the ggplot object as a PNG
+ggsave(filename = "all_SNPs_posterior_probability_plot.png", 
+       plot = all_SNPs_posterior_probability_plot, 
+       width = 14, height = 5, dpi = 300)
+
+ggsave(filename = "all_SNPs_posterior_probability_plot.pdf", plot = all_SNPs_posterior_probability_plot,width=14, height=5 )
+
+```
+
+plot just for manhanttan samples
+```{r}
+library(ggplot2)
+
+# Filter the data for samples in Manhattan
+manhattan_samples <- subset(dapc.results, Original_Pop %in% c( "Manhattan"))
+
+# Create the plot for Manhattan samples
+manhattan_plot1 <- ggplot(manhattan_samples, aes(x = Sample, y = Posterior_membership_probability, fill = Assigned_Pop)) +
+  geom_bar(stat = 'identity') +
+  scale_fill_manual(values = plotcolors1) +
+  facet_grid(~ Original_Pop, scales = "free") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
+  ylab("Posterior Membership Probability") +
+  ggtitle("Posterior Probability Plot: Manhattan Samples")
+
+# Display the plot
+print(manhattan_plot1)
+ggsave(filename = "Manhattan_only_SNPs_posterior_probability_plot.pdf", plot = manhattan_plot1,width=14, height=5 )
+
+ggsave(filename = "Manhattan_only_SNPs_posterior_probability_plot.png", 
+       plot = manhattan_plot1, 
+       width = 14, height = 5, dpi = 300)
+
+```
+
+# Part 3: SNP Tree
+```{r}
+library(phytools)
+library(phangorn)
+library(ape)
+library(dendextend)
+```
+
+```{r}
+# Read the sample meta dataset
+popdata <- read.csv("2022 SLF Info new.csv", header = TRUE) 
+
+# Convert 'area' to a factor
+popdata$area <- as.factor(popdata$area)
+
+location_colors <- c("Bronx" = "#252525", 
+                     "Brooklyn" =  "#e6ab02",
+                     "Camden, NJ" = "#a65628",
+                     "Connecticut" = "#e41a1c" ,
+                     "Governor Island" = "#08589e",
+                     "Manhattan" = "#c861a5",
+                     "Staten island" = "#3690c0",
+                     "West Orange, NJ" = "#009E73")
+
+# Read the tree file
+treefile <- read.tree("Final.SNPTree.treefile")
+
+# Ensure the tree tip labels match with IDs in popdata
+treefile$tip.label <- as.character(popdata$fly_ID)
+
+# Map each tip label to its area based on popdata
+tip_areas <- popdata$area[match(treefile$tip.label, popdata$fly_ID)]
+
+# Replace tip labels with area names
+treefile$tip.label <- as.character(tip_areas)
+
+# Match the areas to the colors defined in location_colors
+tip_colors <- location_colors[as.character(tip_areas)]
+
+png("phylogenetic_tree_plot.png")
+# Plot the fan tree with tip colors and area names as tip labels
+ape::plot.phylo(x = treefile, type = "fan", tip.color = tip_colors)
+
+# Close the PDF device
+dev.off()
+
+
+# Read the sample meta dataset
+popdata <- read.csv("2022 SLF Info new.csv", header = TRUE)
+
+# Convert 'area' to a factor
+popdata$area <- as.factor(popdata$area)
+
+location_colors <- c("Bronx" = "#beaed4",
+                     "Brooklyn" = "#e6ab02",
+                     "Camden, NJ" = "#a65628",
+                     "Connecticut" = "#e41a1c",
+                     "Governor Island" = "#08589e",
+                     "Manhattan" = "#c861a5",
+                     "Staten island" = "#3690c0",
+                     "West Orange, NJ" = "#009E73")
+
+# Read the tree file
+treefile <- read.tree("Final.SNPTree.treefile")
+
+# Ensure the tree tip labels match with IDs in popdata
+treefile$tip.label <- as.character(popdata$fly_ID)
+
+# Map each tip label to its area based on popdata
+tip_areas <- popdata$area[match(treefile$tip.label, popdata$fly_ID)]
+
+# Match the areas to the colors defined in location_colors
+tip_colors <- location_colors[as.character(tip_areas)]
+
+# Function to assign colors to internal branches based on the majority color of descendant tips
+assign_branch_colors <- function(tree, tip_colors) {
+  num_edges <- nrow(tree$edge)
+  branch_colors <- rep("black", num_edges)
+  
+  for (i in 1:num_edges) {
+    node <- tree$edge[i, 2]
+    if (node <= length(tip_colors)) {
+      branch_colors[i] <- tip_colors[node]
+    } else {
+      descendant_tips <- which(tree$edge[, 1] == node)
+      descendant_colors <- branch_colors[descendant_tips]
+      branch_colors[i] <- names(which.max(table(descendant_colors)))
+    }
+  }
+  
+  return(branch_colors)
+}
+
+# Assign colors to the branches based on the majority color of descendant tips
+branch_colors <- assign_branch_colors(treefile, tip_colors)
+
+pdf("unrootted_phylogenetic_tree_plot.pdf")
+
+# Plot the unrooted tree with branch colors and no tip labels
+ape::plot.phylo(x = treefile, type = "unrooted", edge.color = branch_colors, show.tip.label = FALSE)
+# Add a legend for the area colors
+legend("bottomright", legend = names(location_colors), fill = location_colors, title = "Area", cex = 0.8)
+
+# Close the PNG device
+dev.off()
+
+# Create a vector of branch colors based on the tip colors
+branch_colors <- rep("black", length(treefile$edge.length))
+for (i in 1:length(treefile$tip.label)) {
+  tip_index <- which(treefile$edge[, 2] == i)
+  branch_colors[tip_index] <- tip_colors[i]
+}
+
+# Plot the unrooted tree with branch colors, no tip labels, and node labels
+ape::plot.phylo(x = treefile, type = "unrooted", edge.color = branch_colors, show.tip.label = FALSE,  cex = 0.7)
+
+# Add a legend for the area colors
+legend("bottomright", legend = names(location_colors), fill = location_colors, title = "Area", cex = 0.8)
+```
+
+#Part 4: snmf with LEA
+The snmf() function produces results similar to the widely-used computer program STRUCTURE.
+The cross-entropy criterion is based on the prediction of a fraction of masked genotypes (matrix completion), and on the cross-validation approach. Smaller values of the cross-entropy criterion usually mean better runs. 
+
+```{r}
+library(LEA)
+library(RColorBrewer)
+
+#get population list
+location_colors <- c("Bronx" = "#252525", 
+                     "Brooklyn" =  "#e6ab02",
+                     "Camden, NJ" = "#a65628",
+                     "Connecticut" = "#e41a1c" ,
+                     "Governor Island" = "#08589e",
+                     "Manhattan" = "#c861a5",
+                     "Staten island" = "#3690c0",
+                     "West Orange, NJ" = "#009E73")
+
+popdata <- read.csv("2022 SLF Info new.csv", header=T)
+popbed <- popdata[,c("fly_ID","area")]
+poplist.names <- popbed[,2]
+
+#read the data in ped format
+SLF_geno <- ped2geno("Final.SLF.vcf.ped") 
+
+#run snmf, starting with large number of K
+Final_slf_snmf <- snmf(SLF_geno,
+                   K = 1:10, entropy = TRUE, project = "new",alpha=100,
+                   repetitions = 10, ploidy = 2)
+
+# Open a PDF device
+pdf("cross_entropy_plot.pdf", width = 6, height = 6)
+
+# Create the plot
+plot(Final_slf_snmf, col = "blue", pch = 19, cex = 1.2)
+
+# Close the PDF device
+dev.off()
+
+#needs entropy=T in snmf Cross-entropy quantifies how well the probability distribution q predicts p. A smaller cross-entropy indicates that q is a better approximation of p.
+entropy=sapply(1:10,FUN=function(i)
+cross.entropy(Final_slf_snmf,K = i))
+
+ce <-  cross.entropy(Final_slf_snmf, K = 4)
+ce
+# select the run with the lowest cross-entropy for K = 3
+best_run <- which.min(ce)
+
+```
+
+plot for snmf for different areas
+```{r}
+library(ggplot2)
+library(tidyverse)
+
+# define the color
+#get population list
+location_colors <- c("Bronx" = "#252525", 
+                     "Brooklyn" =  "#e6ab02",
+                     "Camden, NJ" = "#a65628",
+                     "Connecticut" = "#e41a1c" ,
+                     "Governor Island" = "#08589e",
+                     "Manhattan" = "#c861a5",
+                     "Staten island" = "#3690c0",
+                     "West Orange, NJ" = "#009E73")
+
+plotcolors <- c("#e6ab02","#a65628","#e41a1c","#08589e","#c861a5","#3690c0","#009E73","#252525")
+
+# Loop for K = 2 to K = 10
+for (K in 3:5) {
+    ce <- cross.entropy(Final_slf_snmf, K = K)
+    best_run <- which.min(ce)
+    tbl <- Q(Final_slf_snmf, K = K, run = best_run)
+    colnames(tbl) <- paste0("P", 1:K)
+    
+    # Convert to data frame and process
+    q_df <- as_tibble(tbl) %>% 
+            mutate(individual = popbed$fly_ID, region = popbed$area)
+    
+    q_df_long <- q_df %>%
+        gather(ancestry, proportion, paste0("P", 1:K)) %>%
+        arrange(region, individual)
+    
+    q_df_ordered <- q_df_long %>%
+        group_by(region, individual) %>%
+        mutate(likely_assignment = ancestry[which.max(proportion)],
+               assignment_prob = max(proportion)) %>%
+        arrange(region, likely_assignment, desc(assignment_prob)) %>%
+        ungroup() %>%
+        mutate(individual = forcats::fct_inorder(factor(individual)))
+    
+    # Plot
+    plot <- ggplot(q_df_ordered, aes(x = interaction(region, individual, sep = "_"), y = proportion, fill = ancestry)) +
+            geom_col() +
+            scale_fill_manual(values = plotcolors[1:K]) +
+            labs(fill = "Ancestry") +
+            theme_minimal() +
+            theme(panel.spacing.x = unit(0, "lines"),
+                  axis.line = element_blank(),
+                  axis.text.x = element_text(angle = 90, hjust = 1, size = 8), 
+                  strip.background = element_rect(fill = "transparent", color = "black"),
+                  panel.background = element_blank(),
+                  axis.title.x = element_text(size = 12),
+                  panel.grid = element_blank()) +
+            xlab("Region_Individual") +
+            ylab("Proportion")
+    
+    # Save the plot to a PDF file
+    pdf_file <- paste0("AncestryPlot_K", K, ".pdf")
+    ggsave(pdf_file, plot, width = 11, height = 8.5, device = "pdf")
+}
+
+```
+
+Plot for detailed_areas
+```{r}
+#Plot for detailed_areas
+library(ggplot2)
+library(tidyverse)
+
+popbed <- popdata[,c("fly_ID","detailed_area")]
+
+# Your custom colors
+plotcolors <- c("#000000", "#ed2224", "#E69F00", "#F0E442", "#274491", "#c861a5", "#8252a1", "#009E73", "#add7e5", "#FF8C00")
+
+# Loop for K = 2 to K = 10
+for (K in 3:5) {
+    ce <- cross.entropy(Final_slf_snmf, K = K)
+    best_run <- which.min(ce)
+    tbl <- Q(Final_slf_snmf, K = K, run = best_run)
+    colnames(tbl) <- paste0("P", 1:K)
+    
+    # Convert to data frame and process
+    q_df <- as_tibble(tbl) %>% 
+            mutate(individual = popbed$fly_ID, region = popbed$detailed_area)
+    
+    q_df_long <- q_df %>%
+        gather(ancestry, proportion, paste0("P", 1:K)) %>%
+        arrange(region, individual)
+    
+    q_df_ordered <- q_df_long %>%
+        group_by(region, individual) %>%
+        mutate(likely_assignment = ancestry[which.max(proportion)],
+               assignment_prob = max(proportion)) %>%
+        arrange(region, likely_assignment, desc(assignment_prob)) %>%
+        ungroup() %>%
+        mutate(individual = forcats::fct_inorder(factor(individual)))
+    
+    # Plot
+    plot <- ggplot(q_df_ordered, aes(x = interaction(region, individual, sep = "_"), y = proportion, fill = ancestry)) +
+            geom_col() +
+            scale_fill_manual(values = plotcolors[1:K]) +
+            labs(fill = "Ancestry") +
+            theme_minimal() +
+            theme(panel.spacing.x = unit(0, "lines"),
+                  axis.line = element_blank(),
+                  axis.text.x = element_text(angle = 90, hjust = 1, size = 8), 
+                  strip.background = element_rect(fill = "transparent", color = "black"),
+                  panel.background = element_blank(),
+                  axis.title.x = element_text(size = 12),
+                  panel.grid = element_blank()) +
+            xlab("Region_Individual") +
+            ylab("Proportion")
+    
+    # Save the plot to a PDF file
+    pdf_file <- paste0("AncestryPlot_detailed_area_K", K, ".pdf")
+    ggsave(pdf_file, plot, width = 11, height = 8.5, device = "pdf")
+}
+```
+
+# Part 5: Admixture
+Run it on hpc, I ran K1 to 10 with 10 indepent replicates
+```{r}
+# Choose the best K
+#Use ADMIXTURE’s cross-validation procedure. A good value of K will exhibit a low cross-validation error compared to other K values. 
+setwd("/scratch/fm2371/Winchell/SLF_spring23/SLF_spring23/raw.vcf/Final/Admixture")
+
+# Read in the data
+data <- list.files(pattern = "Final\\.log.*\\.out", full.names = TRUE)
+
+# Use lapply to read in all log files at once
+bigData <- lapply(data, readLines)
+
+# Find the line that starts with "CV error"
+library(stringr)
+foundset_cv <- sapply(bigData, function(x) x[which(str_detect(x, "^CV error"))])
+
+# Extract the numeric value from the "CV error" line
+cv_errors <- as.numeric(sub("CV error \\(K=\\d+\\): (-?\\d+\\.\\d+).*", "\\1", foundset_cv))
+
+# Create a data frame with K values and corresponding CV errors
+cv_df <- data.frame(
+  K = rep(1:10, each = 10),
+  cv_error = cv_errors
+)
+
+# Calculate the mean CV error for each K
+cv_summary <- aggregate(cv_error ~ K, data = cv_df, FUN = mean)
+
+cv_summary_plot <- ggplot(cv_summary, aes(x = K, y = cv_error)) +
+  geom_line(color = "#2C3E50", size = 1) +
+  geom_point(color = "#E74C3C", size = 3) +
+  #geom_text(aes(label = K), nudge_x = 0.2, nudge_y = 0.002, size = 4, color = "#2C3E50") +
+  labs(x = "K", y = "Mean CV Error") +
+  theme_minimal() +
+  theme(
+    panel.grid.major = element_line(color = "gray90"),
+    panel.grid.minor = element_blank(),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14, face = "bold"),
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    plot.margin = unit(c(1, 1, 1, 1), "cm")
+  ) +
+  ggtitle("Mean CV Error over 10 replicates") +
+  scale_x_continuous(breaks = seq(1, max(cv_summary$K), by = 1)) +
+  scale_y_continuous(limits = c(min(cv_summary$cv_error) - 0.005, max(cv_summary$cv_error) + 0.005))
+
+ggsave(filename="cv_summary_plot.pdf", plot=cv_summary_plot, width=12, height=8, units="in")
+ggsave(filename="cv_summary_plot.png", plot=cv_summary_plot,dpi = 300)
+```
+
+This indicates K=3 is the best.
+```{r}
+#plot for K3 to K8 
+# Set the working directory
+setwd("/Users/fallonmong/Documents/Documents - Fallon MacBook Pro/FallonPaper Final/Admixture")
+
+# Assuming popdata is read before this snippet
+#popdata <- read.csv("~/Documents/Documents - Fallon MacBook Pro/FallonPaper New/No_LD_Pruning/2022 SLF Info new.csv", header=T)
+popbed <- popdata[,c("fly_ID","area")]
+
+# Your custom colors
+plotcolors <- c("#c861a5","#3690c0","#009E73","#e6ab02","#a65628","#08589e","#e41a1c","#252525")
+
+# Loop over each K value
+for (K in 3:8) {
+  # File name based on K value
+  file_name <- paste0("Final.", K, ".Q")
+  
+  # Read the data
+  tbl <- read.table(file_name)
+  
+  # convert the q matrix to a data frame
+  q_df <- tbl %>%
+    as_tibble() %>%
+    mutate(individual = popbed$fly_ID,
+           region = popbed$area)
+  
+  # Convert the wide-form data to long-form
+  q_df_long <- q_df %>%
+    gather(ancestry, proportion, paste0("V", 1:K)) %>%
+    arrange(region, individual)
+  
+  # Order the data by region, likely assignment, and assignment probability
+  q_df_ordered <- q_df_long %>%
+    group_by(region, individual) %>%
+    mutate(likely_assignment = ancestry[which.max(proportion)],
+           assignment_prob = max(proportion)) %>%
+    arrange(region, likely_assignment, desc(assignment_prob)) %>%
+    ungroup() %>%
+    mutate(individual = forcats::fct_inorder(factor(individual)))
+  
+  # Plot the data
+  plot <- q_df_ordered %>%
+    ggplot(aes(x = interaction(region, individual, sep = "_"), y = proportion, fill = ancestry)) +
+    geom_col() +
+    scale_fill_manual(values = plotcolors[1:K]) +
+    labs(fill = "Ancestry") +
+    theme_minimal() +
+    theme(panel.spacing.x = unit(0, "lines"),
+          axis.line = element_blank(),
+          axis.text.x = element_text(angle = 90, hjust = 1, size = 8),
+          strip.background = element_rect(fill = "transparent", color = "black"),
+          panel.background = element_blank(),
+          axis.title.x = element_text(size = 12),
+          panel.grid = element_blank()
+    ) +
+    xlab("Region_Individual") +
+    ylab("Proportion")
+  
+  # Save the plot to a PDF file
+  pdf_file <- paste0("AdmixturePlot_K", K, ".pdf")
+  ggsave(pdf_file, plot, width = 14, height = 8, device = "pdf")
+}
+
+```
+
+
+```{r}
+#Plot for detailed_areas
+# Plot for detailed areas
+# Set the working directory
+setwd("/Users/fallonmong/Documents/Documents - Fallon MacBook Pro/FallonPaper Final/Admixture")
+
+# Assuming popdata is read before this snippet
+#popdata <- read.csv("~/Documents/Documents - Fallon MacBook Pro/FallonPaper New/No_LD_Pruning/2022 SLF Info new.csv", header=T)
+popbed <- popdata[,c("fly_ID","detailed_area")]
+
+# Your custom colors
+plotcolors <- c("#c861a5","#3690c0","#009E73","#e6ab02","#a65628","#08589e","#e41a1c","#252525")
+
+# Loop over each K value
+for (K in 3:8) {
+ 
+   # File name based on K value
+  file_name <- paste0("Final.", K, ".Q")
+  
+  # Read the data
+  tbl <- read.table(file_name)
+  
+  # convert the q matrix to a data frame
+  q_df <- tbl %>%
+    as_tibble() %>%
+    mutate(individual = popbed$fly_ID,
+           region = popbed$detailed_area)
+  
+  # Convert the wide-form data to long-form
+  q_df_long <- q_df %>%
+    gather(ancestry, proportion, paste0("V", 1:K)) %>%
+    arrange(region, individual)
+  
+  # Order the data by region, likely assignment, and assignment probability
+  q_df_ordered <- q_df_long %>%
+    group_by(region, individual) %>%
+    mutate(likely_assignment = ancestry[which.max(proportion)],
+           assignment_prob = max(proportion)) %>%
+    arrange(region, likely_assignment, desc(assignment_prob)) %>%
+    ungroup() %>%
+    mutate(individual = forcats::fct_inorder(factor(individual)))
+  
+  # Plot the data
+  plot <- q_df_ordered %>%
+    ggplot(aes(x = interaction(region, individual, sep = "_"), y = proportion, fill = ancestry)) +
+    geom_col() +
+    scale_fill_manual(values = plotcolors[1:K]) +
+    labs(fill = "Ancestry") +
+    theme_minimal() +
+    theme(panel.spacing.x = unit(0, "lines"),
+          axis.line = element_blank(),
+          axis.text.x = element_text(angle = 90, hjust = 1, size = 8),
+          strip.background = element_rect(fill = "transparent", color = "black"),
+          panel.background = element_blank(),
+          axis.title.x = element_text(size = 12),
+          panel.grid = element_blank()
+    ) +
+    xlab("Region_Individual") +
+    ylab("Proportion")
+  
+  # Save the plot to a PDF file
+  pdf_file <- paste0("AdmixturePlot_DetailedArea_K", K, ".pdf")
+  ggsave(pdf_file, plot, width = 14, height = 8, device = "pdf")
+}
+```
+
+```{r}
+library(tidyverse)
+library(rnaturalearth)
+library(ggplot2)
+library(scatterpie)
+
+setwd("/Users/fallonmong/Documents/Documents - Fallon MacBook Pro/FallonPaper Final/Admixture")
+# Read the best admixture result (K=3)
+K <- 3
+file_name <- paste0("Final.", K, ".Q")
+tbl <- read.table(file_name)
+
+# Convert the q matrix to a data frame
+q_df <- tbl %>%
+  as_tibble() %>%
+  mutate(individual = popdata$fly_ID,
+         region = popdata$area)
+
+write_csv(q_df, "K3ancestry.csv")
+
+# Convert the wide-form data to long-form
+q_df_long <- q_df %>%
+  gather(ancestry, proportion, paste0("V", 1:K)) %>%
+  arrange(region, individual)
+
+# Merge the location data with the admixture results
+combined_data <- merge(q_df_long, popdata[, c("fly_ID", "lat", "lon")], by.x = "individual", by.y = "fly_ID", all.x = TRUE)
+
+# Read in a basemap 
+library(rnaturalearth)
+
+ny_map <- ne_states(country = "United States of America", returnclass = "sf")
+
+slf_map_man <- ggplot(data = ny_map) +
+geom_sf() +
+geom_point(
+data = combined_data,
+aes(
+x = lon,
+y = lat,
+fill = ancestry,
+group = individual,
+size = 1
+),
+shape = 21
+) +
+scale_fill_manual(values = c("#c861a5", "#3690c0", "#009E73")) +
+guides(size = FALSE,
+fill = guide_legend(override.aes = list(size = 3))) +
+theme_bw(base_size = 16) +
+theme(
+panel.grid.major = element_blank(),
+panel.grid.minor = element_blank()
+) +
+coord_sf(xlim = c(-75.5, -73.5), ylim = c(39.5, 41.5))
+  
+ancestry <- read.csv("K3ancestry.csv", header = T)
+head(ancestry)
+
+library(tidyverse)
+library(sf)
+library(rnaturalearth)
+library(scatterpie)
+
+# Reshape the data to long format
+ancestry_long <- ancestry %>%
+  pivot_longer(cols = starts_with("Cluster"), names_to = "Cluster", values_to = "Proportion")
+
+# Create a new column to assign colors to each cluster
+ancestry_long$Color <- case_when(
+  ancestry_long$Cluster == "Cluster1" ~ "#c861a5",
+  ancestry_long$Cluster == "Cluster2" ~ "#3690c0",
+  ancestry_long$Cluster == "Cluster3" ~ "#009E73"
+)
+
+# Load the New York map data
+ny_map <- ne_states(country = "United States of America", returnclass = "sf") %>%
+  filter(name == "New York")
+
+# Create the map plot with pie charts
+slf_map_man <- ggplot(data = ny_map) +
+  geom_sf() +
+  geom_scatterpie(
+    data = ancestry_long,
+    aes(
+      x = lon,
+      y = lat,
+      group = fly_ID,
+      r = 0.02 # Adjust the size of the pie charts
+    ),
+    cols = c("Cluster1", "Cluster2", "Cluster3"),
+    color = NA,
+    alpha = 0.8
+  ) +
+  scale_fill_manual(values = c("#c861a5", "#3690c0", "#009E73")) +
+  guides(fill = guide_legend(override.aes = list(shape = 21, size = 3))) +
+  theme_bw(base_size = 16) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  ) +
+  coord_sf(xlim = c(-74.05, -73.9), ylim = c(40.7, 40.8)) # Adjust the map extent to focus on Manhattan
+
+# Print the plot
+slf_map_man
+
+```
+```{r}
+# Set the working directory
+setwd("/Users/fallonmong/Documents/Documents - Fallon MacBook Pro/FallonPaper Final/Admixture")
+
+# Assuming popdata is read before this snippet
+#popdata <- read.csv("~/Documents/Documents - Fallon MacBook Pro/FallonPaper New/No_LD_Pruning/2022 SLF Info new.csv", header=T)
+
+popbed <- popdata[,c("fly_ID","area")]
+
+# Your custom colors
+plotcolors <- c("#c861a5","#3690c0","#e6ab02","#009E73","#a65628","#08589e","#e41a1c","#252525")
+
+# Set the desired K value
+K <- 3
+
+# File name based on K value
+file_name <- paste0("Final.", K, ".Q")
+
+# Read the data
+tbl <- read.table(file_name)
+
+# Convert the q matrix to a data frame
+q_df <- tbl %>%
+  as_tibble() %>%
+  mutate(individual = popbed$fly_ID,
+         region = popbed$area)
+
+# Convert the wide-form data to long-form
+q_df_long <- q_df %>%
+  gather(ancestry, proportion, paste0("V", 1:K)) %>%
+  arrange(region, individual)
+
+# Order the data by region, likely assignment, and assignment probability
+q_df_ordered <- q_df_long %>%
+  group_by(region, individual) %>%
+  mutate(likely_assignment = ancestry[which.max(proportion)],
+         assignment_prob = max(proportion)) %>%
+  arrange(region, likely_assignment, desc(assignment_prob)) %>%
+  ungroup() %>%
+  mutate(individual = forcats::fct_inorder(factor(individual)))
+
+# Calculate the width for each region
+region_width <- 1 / tapply(q_df_ordered$region, q_df_ordered$region, length)
+
+# Add the width column to the data frame
+q_df_ordered$width <- region_width[q_df_ordered$region]
+
+plot <- q_df_ordered %>%
+  ggplot(aes(x = individual, y = proportion, fill = ancestry)) +
+  geom_col(width = 0.9) +  # Use a fixed width here
+  scale_fill_manual(values = plotcolors[1:K]) +
+  labs(fill = "Ancestry") +
+  theme_minimal() +
+  facet_wrap(~ region, nrow = 1, strip.position = "bottom", scales = "free_x") +
+  theme(
+    panel.spacing.x = unit(0.5, "lines"),
+    axis.line = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    strip.background = element_rect(fill = "transparent", color = "black"),
+    strip.text = element_text(size = 12),
+    panel.background = element_blank(),
+    axis.title.x = element_blank(),
+    panel.grid = element_blank()
+  ) +
+  ylab("Proportion")
+
+# Save the plot to a PDF file
+pdf_file <- paste0("AdmixturePlot_K", K, ".pdf")
+ggsave(pdf_file, plot, width = 14, height = 8, device = "pdf")
+```
+
+
+Plot for just manhattan
+```{r}
+# Set the working directory
+setwd("/Users/fallonmong/Documents/Documents - Fallon MacBook Pro/FallonPaper Final/Admixture")
+
+# Assuming popdata is read before this snippet
+# popdata <- read.csv("~/Documents/Documents - Fallon MacBook Pro/FallonPaper New/No_LD_Pruning/2022 SLF Info new.csv", header=T)
+
+popbed <- popdata[, c("fly_ID", "detailed_area")]
+
+# Your custom colors
+plotcolors <- c("#c861a5", "#3690c0", "#e6ab02", "#009E73", "#a65628", "#08589e", "#e41a1c", "#252525")
+
+# Set the desired K value
+K <- 3
+
+# File name based on K value
+file_name <- paste0("Final.", K, ".Q")
+
+# Read the data
+tbl <- read.table(file_name)
+
+# Convert the q matrix to a data frame
+q_df <- tbl %>%
+  as_tibble() %>%
+  mutate(individual = popbed$fly_ID,
+         region = popbed$detailed_area)
+
+# Filter the data to include only Manhattan samples
+q_df_manhattan <- q_df %>%
+  filter(grepl("Manhattan", region))
+
+# Convert the wide-form data to long-form
+q_df_long_manhattan <- q_df_manhattan %>%
+  gather(ancestry, proportion, paste0("V", 1:K)) %>%
+  arrange(individual)
+
+# Order the data by likely assignment and assignment probability
+q_df_ordered_manhattan <- q_df_long_manhattan %>%
+  group_by(individual) %>%
+  mutate(likely_assignment = ancestry[which.max(proportion)],
+         assignment_prob = max(proportion)) %>%
+  arrange(region, likely_assignment, desc(assignment_prob)) %>%
+  ungroup() %>%
+  mutate(individual = forcats::fct_inorder(factor(individual)))
+
+plot_manhattan <- q_df_ordered_manhattan %>%
+  ggplot(aes(x = individual, y = proportion, fill = ancestry)) +
+  geom_col(width = 1) +
+  scale_fill_manual(values = plotcolors[1:K]) +
+  labs(fill = "Ancestry") +
+  theme_minimal() +
+  theme(
+    panel.spacing.x = unit(0.2, "lines"),
+    axis.line = element_blank(),
+    axis.text.x = element_text(angle = 90, hjust = 1, size = 6),
+    panel.background = element_blank(),
+    axis.title.x = element_blank(),
+    panel.grid = element_blank()
+  ) +
+  xlab("Individual") +
+  ylab("Proportion") +
+  facet_grid(rows = vars(region), scales = "free_x", space = "free_x")
+
+# Save the plot to a PDF file
+pdf_file_manhattan <- paste0("AdmixturePlot_Manhattan_K", K, ".pdf")
+ggsave(pdf_file_manhattan, plot_manhattan, width = 10, height = 6, device = "pdf")
+
+# Save the plot to a PNG file
+png_file_manhattan <- paste0("AdmixturePlot_Manhattan_K", K, ".png")
+ggsave(png_file_manhattan, plot_manhattan, width = 10, height = 6, device = "png")
+```
+
+
+```{r}
