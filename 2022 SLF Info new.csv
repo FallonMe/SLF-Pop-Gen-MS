@@ -1,0 +1,99 @@
+fly_ID,slfID_integer,field_id,state,area,detailed_area,date_col,lat,lon,cloud,sun,rain,wind,found_on,status,location,sex,body size 1,body size 2,body size 3
+NYULF_0089_a,89,LF51,NY,Bronx,Bronx,10/8/2022,40.88554,-73.8665,F,T,F,F,NA,ALIVE,NA,female,NA,NA,NA
+NYULF_0124_a,124,LF33,NY,Bronx,Bronx,10/8/2022,40.8844,-73.86648,F,T,F,F,VEG,ALIVE,NA,female,20.3,19.8,19.1
+NYULF_0431_a,431,LF197,NY,Brooklyn,Brooklyn,10/13/2022,40.683601,-73.950782,T,F,F,F,ANTH,DEAD,454 Nostrand Ave (jefferson),female,18.9,17.6,17
+NYULF_0770_a,770,LF202,NY,Brooklyn,Brooklyn,11/11/2022,40.68351,-73.95048,T,F,F,F,VEG,ALIVE,Yard nostrand ave & jefferson ave,female,,,
+NYULF_0765_a,765,CF1,NJ,"Camden, NJ","Camden, NJ",10/7/2022,39.9420993,-75.1200589,F,T,F,F,ANTH,ALIVE,2015 broadway back parking lot,female,,,
+NYULF_0766_a,766,CF1,NJ,"Camden, NJ","Camden, NJ",10/7/2022,39.9420993,-75.1200589,F,T,F,F,ANTH,ALIVE,2015 broadway back parking lot,female,,,
+NYULF_0794_a,794,SL-SI,CT,Connecticut,Connecticut,10/8/2022,41.120918,-73.333473,,,,,,,,female,NA,NA,NA
+NYULF_0800_a,800,SL-HG,CT,Connecticut,Connecticut,10/10/2022,41.072997,-73.54778,,,,,,,,female,NA,NA,NA
+NYULF_0802_a,802,SL-HG-03,CT,Connecticut,Connecticut,10/10/2022,41.022997,-73.54778,,,,,,,,female,,,
+NYULF_0805_a,805,WHH,CT,Connecticut,Connecticut,11/15/2022,41.091451,-73.56422,,,,,,,"Westhill High, Stamford, CT",female,21.2,20.9,20.8
+NYULF_0795_a,795,SL-SI,CT,Connecticut,Connecticut,10/8/2022,41.120918,-73.333473,,,,,,,,male,NA,NA,NA
+NYULF_0796_a,796,SL-SI,CT,Connecticut,Connecticut,10/8/2022,41.120918,-73.333473,,,,,,,,male,,,
+NYULF_0126_a,126,LF28,NY,Governor Island,Governor Island,10/7/2022,40.68765,-74.01446,F,T,F,F,ANTH,ALIVE,NA,female,NA,NA,NA
+NYULF_0139_a,139,LF73,NY,Governor Island,Governor Island,10/7/2022,40.69079,-74.01875,F,T,F,T,VEG,ALIVE,Governor's Island,female,NA,NA,NA
+NYULF_0143_a,143,LF24,NY,Governor Island,Governor Island,10/9/2022,40.6860083,-74.020422,F,T,F,F,VEG,ALIVE,Governor's Island,female,18.7,17.3,18.1
+NYULF_0393_a,393,LF44,NY,Governor Island,Governor Island,10/20/2022,40.69259,-74.01574,F,T,F,F,VEG,ALIVE,NA,female,,,
+NYULF_0410_a,410,LF60,NY,Governor Island,Governor Island,10/20/2022,40.68784,-74.01546,F,T,F,T,ANTH,ALIVE,NA,female,,,
+NYULF_0538_a,538,LF299,NY,Governor Island,Governor Island,10/28/2022,40.68815,-74.02325,F,T,F,T,ANTH,DEAD,NA,female,NA,NA,NA
+NYULF_0613_a,613,LF290,NY,Governor Island,Governor Island,10/28/2022,40.68591,-74.02312,F,T,F,T,VEG,ALIVE,NA,female,NA,NA,NA
+NYULF_0698_a,698,LF251,NY,Governor Island,Governor Island,10/29/2022,40.69012,-74.01737,T,F,F,F,VEG,ALIVE,NA,female,NA,NA,NA
+NYULF_0055_a,55,LF76,NY,Governor Island,Governor Island,10/7/2022,40.6863888,-74.0194444,F,T,F,F,ANTH,ALIVE,Governor's Island,male,15.5,15.7,15.5
+NYULF_0003_a,3,LF86,NY,Manhattan,Lower Manhattan,10/7/2022,40.7012801,-74.0118687,F,T,F,F,ANTH,ALIVE,South st. & Whitehall st.,female,16.7,16.3,16.3
+NYULF_0004_a,4,LF23,NY,Manhattan,Lower Manhattan,10/9/2022,40.711449,-74.014897,F,T,F,F,ANTH,DEAD,West st. & liberty st.,female,18.1,18.5,18
+NYULF_0005_a,5,LF137,NY,Manhattan,Lower Manhattan,10/7/2022,40.735932,-74.009812,F,T,F,F,VEG,ALIVE,HUDSON PKWY,female,16.2,16.2,16.3
+NYULF_0006_a,6,LF140,NY,Manhattan,Lower Manhattan,10/9/2022,40.73392,-74.00983,F,T,F,F,ANTH,DEAD,HUDSON PKWY,female,16.4,16.5,16.6
+NYULF_0014_a,14,LF143,NY,Manhattan,Lower Manhattan,10/7/2022,40.7330555,-74.0025,F,T,F,F,ANTH,DEAD,NA,female,NA,NA,NA
+NYULF_0015_a,15,LF144,NY,Manhattan,Lower Manhattan,10/7/2022,40.7330555,-74.0022222,F,T,F,F,ANTH,DEAD,NA,female,NA,NA,NA
+NYULF_0027_a,27,LF55,NY,Manhattan,Upper Manhattan,10/10/2022,40.83808,-73.93549,F,T,F,F,VEG,ALIVE,NA,female,,,
+NYULF_0035_a,35,LF41,NY,Manhattan,Upper Manhattan,10/10/2022,40.84034,-73.93348,F,T,F,F,VEG,ALIVE,Coogan's Bluff,female,NA,NA,NA
+NYULF_0040_a,40,LF40,NY,Manhattan,Upper Manhattan,10/10/2022,40.8466,-73.93191,F,T,F,T,ANTH,ALIVE,179th & Amsterdam,female,18.9,19.2,19.2
+NYULF_0046_a,46,LF49,NY,Manhattan,Lower Manhattan,10/7/2022,40.70159,-74.01251,F,T,F,T,ANTH,DEAD,Whitehall st. & South st.,female,NA,NA,NA
+NYULF_0053_a,53,LF27,NY,Manhattan,Lower Manhattan,10/11/2022,40.73163,-73.9983,F,F,F,F,VEG,ALIVE,NA,female,15.4,15.2,15.1
+NYULF_0054_a,54,LF88,NY,Manhattan,Lower Manhattan,10/7/2022,40.7302777,-73.9963888,F,T,F,F,VEG,ALIVE,SE WSP,female,NA,NA,NA
+NYULF_0056_a,56,LF31,NY,Manhattan,Upper Manhattan,10/7/2022,40.83554,-73.93888,T,F,F,T,ANTH,DEAD,NA,female,NA,NA,NA
+NYULF_0071_a,71,LF48,NY,Manhattan,Lower Manhattan,10/7/2022,40.7296,-73.99498,F,T,F,T,ANTH,DEAD,Wash place & greene st.,female,16.3,17,17.7
+NYULF_0078_a,78,LF146,NY,Manhattan,Lower Manhattan,10/7/2022,40.7375,-74.0097222,F,T,F,F,ANTH,ALIVE,HUDSON PKWY,female,15.7,15.9,15.8
+NYULF_0087_a,87,5SLF,NY,Manhattan,Lower Manhattan,10/6/2022,40.72775,-73.99919,F,T,F,F,VEG,NA,LAGUARDIA COM. GARDEN,female,17.4,17.1,17.2
+NYULF_0088_a,88,SLF4,NY,Manhattan,Lower Manhattan,10/6/2022,40.72699,-73.99991,F,T,F,F,ANTH,DEAD,LAGUARDIA & W. HOUSTON,female,17,17.1,17.2
+NYULF_0107_a,107,LF59,NY,Manhattan,Lower Manhattan,10/11/2022,40.73031,-73.99474,F,T,F,F,ANTH,DEAD,NA,female,NA,NA,NA
+NYULF_0125_a,125,LF52,NY,Manhattan,Upper Manhattan,10/8/2022,40.83594,-73.93864,F,T,F,T,NA,ALIVE,backyard,female,16.9,17.7,17
+NYULF_0132_a,132,9,NY,Manhattan,Lower Manhattan,10/6/2022,40.73032,-73.98962,F,T,F,F,ANTH,DEAD,E9th st. & 4th Av,female,,,
+NYULF_0192_a,192,LF25,NY,Manhattan,Lower Manhattan,10/9/2022,40.7148923,-74.016693,F,T,F,F,ANTH,DEAD,PLACE VESEY ST. & NORTH END AVENUE,female,NA,NA,NA
+NYULF_0201_a,201,LF36,NY,Manhattan,Lower Manhattan,10/11/2022,40.73104,-73.99544,F,T,F,F,ANTH,DEAD,NA,female,NA,NA,NA
+NYULF_0218_a,218,1.1,NY,Manhattan,Lower Manhattan,10/7/2022,40.70033,-74.01216,F,T,F,F,ANTH,DEAD,GI Ferry,female,NA,NA,NA
+NYULF_0310_a,310,10,NY,Manhattan,Lower Manhattan,10/6/2022,40.72989,-73.98866,F,T,F,F,ANTH,ALIVE,Barney Building ,female,NA,NA,NA
+NYULF_0327_a,327,LF56,NY,Manhattan,Lower Manhattan,10/12/2022,40.7302777,-73.9947222,F,T,F,F,ANTH,DEAD,waverly & greene,female,15.6,15.6,15.6
+NYULF_0329_a,329,LF69,NY,Manhattan,Lower Manhattan,10/12/2022,40.7294,-73.98962,T,F,F,T,ANTH,ALIVE,3rd av & E9th ,female,17.7,17.4,17.6
+NYULF_0336_a,336,LF39,NY,Manhattan,Upper Manhattan,10/13/2022,40.811111,-73.959444,T,F,T,F,ANTH,NA,515 W122 st,female,,,
+NYULF_0337_a,337,LF39,NY,Manhattan,Upper Manhattan,10/13/2022,40.811111,-73.959444,T,F,T,F,ANTH,NA,515 W122 st,female,NA,NA,NA
+NYULF_0356_a,356,LF70,NY,Manhattan,Lower Manhattan,10/14/2022,40.73438,-73.9939,F,T,F,F,ANTH,DEAD,5th av & E12th st,female,,,
+NYULF_0358_a,358,LF30,NY,Manhattan,Lower Manhattan,10/12/2022,40.730556,-73.996944,T,F,F,F,VEG,ALIVE,grass off garibaldi,female,,,
+NYULF_0360_a,360,LF84,NY,Manhattan,Lower Manhattan,10/7/2022,40.716667,-73.983333,F,T,F,F,ANTH,ALIVE,Mercer,female,NA,NA,NA
+NYULF_0361_a,361,LF63,NY,Manhattan,Lower Manhattan,10/19/2022,40.73071,-73.9997,F,T,F,F,ANTH,DEAD,NA,female,,,
+NYULF_0372_a,372,LF65,NY,Manhattan,Lower Manhattan,10/15/2022,40.73,-73.99,F,F,F,F,ANTH,DEAD,1st Av & 5th St,female,NA,NA,NA
+NYULF_0402_a,402,LF283,NY,Manhattan,Lower Manhattan,10/24/2022,40.73132,-73.99534,T,F,F,F,ANTH,DEAD,La maisson Francaise,female,NA,NA,NA
+NYULF_0432_a,432,LF201,NY,Manhattan,Lower Manhattan,10/22/2022,40.727,-73.999,F,T,F,F,VEG,ALIVE,laguardia pl & bleecker st,female,NA,NA,NA
+NYULF_0433_a,433,LF201,NY,Manhattan,Lower Manhattan,10/22/2022,40.727,-73.999,F,T,F,F,VEG,ALIVE,laguardia pl & bleecker st,female,NA,NA,NA
+NYULF_0533_a,533,LF57,NY,Manhattan,Midtown Manhattan,10/27/2022,40.77747,-73.97463,F,T,F,F,VEG,ALIVE,NA,female,,,
+NYULF_0539_a,539,LF285,NY,Manhattan,Midtown Manhattan,10/27/2022,40.77594,-73.9759,F,T,F,F,VEG,ALIVE,NA,female,NA,NA,NA
+NYULF_0540_a,540,LF284,NY,Manhattan,Midtown Manhattan,10/27/2022,40.77152,-73.97718,F,T,F,F,VEG,ALIVE,NA,female,,,
+NYULF_0541_a,541,LF284,NY,Manhattan,Midtown Manhattan,10/27/2022,40.77152,-73.97718,F,T,F,F,VEG,ALIVE,NA,female,,,
+NYULF_0564_a,564,LF286,NY,Manhattan,Midtown Manhattan,10/27/2022,40.77724,-73.97487,F,T,F,F,VEG,ALIVE,NA,female,,,
+NYULF_0761_a,761,LF306,NY,Manhattan,Midtown Manhattan,10/30/2022,40.74312,-74.00864,F,T,F,F,ANTH,DEAD,Pier 57 Hudson River,female,NA,NA,NA
+NYULF_0762_a,762,LF307,NY,Manhattan,Lower Manhattan,10/30/2022,40.73308,-73.9983,F,T,F,F,ANTH,DEAD,8th & mcdougal,female,NA,NA,NA
+NYULF_0774_a,774,LF310,NY,Manhattan,Lower Manhattan,10/31/2022,40.73466,-73.99883,F,T,F,F,ANTH,mix,6th ave & 10th st,female,,,
+NYULF_0779_a,779,LF302,NY,Manhattan,Midtown Manhattan,10/27/2022,40.74371,-74.01018,,,,,ANTH,DEAD,Chelsea Pier,female,NA,NA,NA
+NYULF_0784_a,784,LF304,NY,Manhattan,Upper Manhattan,10/30/2022,40.81785,-73.9621,F,T,F,F,ANTH,,Hudson River Parkway,female,NA,NA,NA
+NYULF_0786_a,786,LF312,NY,Manhattan,Midtown Manhattan,11/6/2022,40.73765,-73.99728,F,T,F,F,ANTH,DEAD,6th ave & 14th st,female,NA,NA,NA
+NYULF_0787_a,787,LF313,NY,Manhattan,Midtown Manhattan,11/8/2022,40.74503,-74.00958,,,,,ANTH,DEAD,Hudson Pier 59,female,NA,NA,NA
+NYULF_0009_a,9,LF99,NY,Manhattan,Lower Manhattan,10/7/2022,40.7335,-74.00413,F,T,F,F,ANTH,ALIVE,WASHINGTON AND BLEECKER,male,16.4,16.2,17.1
+NYULF_0021_a,21,LF115,NY,Manhattan,Lower Manhattan,10/7/2022,40.73744,-74.00611,F,T,F,F,ANTH,ALIVE,WAVERLY & W11TH,male,NA,NA,NA
+NYULF_0022_a,22,LF109,NY,Manhattan,Lower Manhattan,10/7/2022,40.73204,-74.00905,F,T,F,F,ANTH,ALIVE,JANE & WASHINGTON,male,14.9,15,15.2
+NYULF_0069_a,69,LF110,NY,Manhattan,Lower Manhattan,10/7/2022,40.73544,-74.00903,F,T,F,F,ANTH,DEAD,HUDSON PKWY,male,15.3,16.1,15.9
+NYULF_0115_a,115,LF42,NY,Manhattan,Upper Manhattan,10/10/2022,40.84795,-73.93086,F,T,F,T,ANTH,DEAD,NA,male,NA,NA,NA
+NYULF_0239_a,239,SLF3,NY,Manhattan,Lower Manhattan,10/6/2022,40.73032,-73.99783,F,T,F,F,ANTH,ALIVE,NA,male,NA,NA,NA
+NYULF_0773_a,773,LF310,NY,Manhattan,Lower Manhattan,10/31/2022,40.73466,-73.99883,F,T,F,F,ANTH,mix,6th ave & 10th st,male,NA,NA,NA
+NYULF_0785_a,785,LF305,NY,Manhattan,Midtown Manhattan,10/30/2022,40.777,-73.98977,F,T,F,F,ANTH,ALIVE,Hudson River Parkway,male,14,14.1,14.2
+NYULF_0791_a,791,LF154,NY,Manhattan,Lower Manhattan,10/7/2022,40.73318,-74.00484,F,T,F,F,ANTH,DEAD,,male,NA,NA,NA
+NYULF_0013_a,13,LF121,NY,Manhattan,Lower Manhattan,10/7/2022,40.73392,-74.00903,F,T,F,F,ANTH,DEAD,HUDSON PKWY,too damaged,NA,NA,NA
+NYULF_0018_a,18,LF134,NY,Manhattan,Lower Manhattan,10/7/2022,40.7338888,-74.005,F,T,F,F,ANTH,DEAD,W10TH & BLEECKER,too damaged,NA,NA,NA
+NYULF_0020_a,20,LF128,NY,Manhattan,Lower Manhattan,10/7/2022,40.7341666,-74.0033333,F,T,F,F,ANTH,DEAD,between Bleecker & 4th,too damaged,NA,NA,NA
+NYULF_0024_a,24,LF136,NY,Manhattan,Lower Manhattan,10/7/2022,40.738259,-74.008071,F,T,F,F,ANTH,DEAD,JANE & WASHINGTON,too damaged,NA,NA,NA
+NYULF_0200_a,200,LF36,NY,Manhattan,Lower Manhattan,10/11/2022,40.73104,-73.99544,F,T,F,F,ANTH,DEAD,NA,too damaged,NA,NA,NA
+NYULF_0278_a,278,SLF0,NY,Manhattan,Lower Manhattan,10/6/2022,40.730056,-73.998249,F,T,F,F,ANTH,NA,side of GCASL,too damaged,NA,NA,NA
+NYULF_0330_a,330,LF15,NY,Manhattan,Lower Manhattan,10/12/2022,40.72998,-73.98829,T,F,F,T,ANTH,DEAD,Barney Building,too damaged,,,
+NYULF_0339_a,339,LF89,NY,Manhattan,Upper Manhattan,10/9/2022,40.811111,-73.959444,F,T,F,F,ANTH,DEAD,515 W122 St,too damaged,NA,NA,NA
+NYULF_0340_a,340,LF89,NY,Manhattan,Upper Manhattan,10/9/2022,40.811111,-73.959444,F,T,F,F,ANTH,DEAD,515 W122 St,too damaged,NA,NA,NA
+NYULF_0344_a,344,LF62,NY,Manhattan,Lower Manhattan,10/14/2022,40.73455,-73.9947,F,T,F,F,ANTH,DEAD,5th av & 12th st,too damaged,NA,NA,NA
+NYULF_0345_a,345,32,NY,Manhattan,Lower Manhattan,10/14/2022,40.73455,-73.9947,F,T,F,F,ANTH,DEAD,5th av & 12th st,too damaged,too damaged,male,NA
+NYULF_0362_a,362,LF63,NY,Manhattan,Lower Manhattan,10/19/2022,40.73071,-73.9997,F,T,F,F,ANTH,DEAD,NA,too damaged,,,
+NYULF_0401_a,401,LF283,NY,Manhattan,Lower Manhattan,10/24/2022,40.73132,-73.99534,T,F,F,F,ANTH,DEAD,La maisson Francaise,too damaged,NA,NA,NA
+NYULF_0778_a,778,LF302,NY,Manhattan,Midtown Manhattan,10/27/2022,40.74371,-74.01018,,,,,ANTH,DEAD,Chelsea Pier,too damaged,,,
+NYULF_0783_a,783,LF303,NY,Manhattan,Upper Manhattan,10/30/2022,40.8271,-73.95222,F,T,F,F,ANTH,DEAD,riverbank state park,too damaged,NA,NA,NA
+NYULF_0789_a,789,LF311,NY,Staten island,Staten island,11/6/2022,40.59995,-74.06105,F,T,F,F,ANTH,ALIVE,staten island,female,,,
+NYULF_0788_a,788,LF311,NY,Staten island,Staten island,11/6/2022,40.59995,-74.06105,F,T,F,F,ANTH,ALIVE,staten island,too damaged,,,
+NYULF_0806_a,806,WO,NJ,"West Orange, NJ","West Orange, NJ",10/10/2022,40.786,-74.229,,,,,,,West Orange,female,17.7,17.6,17.7
+NYULF_0807_a,807,WO,NJ,"West Orange, NJ","West Orange, NJ",10/10/2022,40.786,-74.229,,,,,,,West Orange,female,16.1,16.2,16
+NYULF_0810_a,810,MolBio,NJ,"West Orange, NJ","West Orange, NJ",11/1/2022,40.344719,-74.653635,,,,,,,Princeton,male,13,13.1,12.9
