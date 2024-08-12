@@ -1,0 +1,1153 @@
+---
+title: "Unraveling the demographic history and population structure of the Spotted Lanternfly through Whole-Genome Sequencing"
+author: "Fang Meng, Anthony A Snead, Jason Munshi-South, Kristin Winchell"
+date: "Last compiled on `r format(Sys.time(), '%d %B, %Y')`"
+toc: TRUE
+output: pdf_document
+knitr:
+  opts_chunk: 
+    eval: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(eval = FALSE)
+
+```
+
+required packages
+```{r} 
+library(ggplot2)
+library(patchwork)
+library(readr)
+```
+
+# Part 1: Sequencing summary (Figure S1)
+## 1.1 Plot the coverage for each spotted lanternfly sample 
+```{r}
+setwd("/Users/fallonmong/Documents/Documents - Fallon MacBook Pro/FallonPaper Final/Final")
+
+# read the data
+dp <- read.table("Final.SLF.idepth", header =T)
+
+# Plot the distribution of MEAN_COVERAGE with specified x-axis range and binwidth
+MEAN_dp <- ggplot(dp, aes(x = MEAN_DEPTH)) +
+  geom_histogram(binwidth = 1, fill = "lightblue", alpha = 0.7) +
+  ggtitle("Distribution of MEAN_COVERAGE") +
+  xlab("MEAN_MEAN_DEPTH") +
+  ylab("Frequency") +
+  xlim(0, 7)
+MEAN_dp_IND <- ggplot(dp, aes(x = INDV, y = MEAN_DEPTH)) +
+  geom_bar(stat = "identity",fill = "lightblue") +
+  theme_minimal() +
+  labs(x = "Individual", y = "mean_depth") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))  # Rotate x labels for better readability
+
+# Save the MEAN_COVERAGE_IND plot
+ggsave(filename = "MEAN_dp_IND.png", plot = MEAN_dp_IND, width = 10, height = 6, dpi = 300)
+ggsave(filename = "MEAN_dp_IND.pdf", plot = MEAN_dp_IND, width = 10, height = 6)
+
+```
+
+## 1.2 Percentage of missingness
+The N_MISS column is the number of sites the individual does not have any data for. The F_MISS column is the frequency of missing data for that individual (N_MISS / TOTAL SITES).Calculated using vcftools.
+```{r}
+setwd("/Users/fallonmong/Documents/Documents - Fallon MacBook Pro/FallonPaper Final/Final")
+
+#read the missing data
+missingness <- read.table("Final.SLF.imiss", header =T)
+
+#plot the missingess data
+missingness_IND <- ggplot(missingness, aes(x = INDV, y = F_MISS)) +
+  geom_bar(stat = "identity",fill = "#2166ac") +
+  theme_minimal() +
+  labs(x = "Individual", y = "Frequency of Missing Data") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))  # Rotate x labels for better readability
+
+# Save the missingness plot as a PNG file
+ggsave(filename = "missingness_IND.png", plot = missingness_IND, width = 10, height = 6, dpi = 300)
+ggsave(filename = "missingness_IND.pdf", plot = missingness_IND, width = 10, height = 6)
+
+```
+
+# Part 2: Population genetic diversity
+Figure 2
+```{r warning=FALSE, message=FALSE}
+# load required packages
+library(ggplot2)
+library(ggnewscale)
+library(patchwork)
+library(tidyr)
+library(dplyr)
+library(car)
+library(pheatmap)
+
+#define the colors for each location and keep it consistency
+location_colors <- c("Bronx" = "#252525", 
+                     "Brooklyn" =  "#e6ab02",
+                     "Camden, NJ" = "#a65628",
+                     "Connecticut" = "#e41a1c" ,
+                     "Governor Island" = "#08589e",
+                     "Manhattan" = "#c861a5",
+                     "Staten island" = "#3690c0",
+                     "West Orange, NJ" = "#009E73")
+```
+
+## 2.1 Heterozygosity                 
+```{r}
+# read in Heterozygosity data calculted using vcftools
+hetstats <- read.table("Final.SLF.het", header=T)
+popdata <- read.csv("2022 SLF Info new.csv", header=T) 
+#population list in same order as bed file, ordered by SLF ID
+
+#Observed heterozygosity (O.HET) is calculated as the total number of sites (N_SITES) minus the number of homozygous sites (O.HOM).
+hetstats$O.HET <- hetstats$N_SITES - hetstats$O.HOM.
+
+#Expected heterozygosity (E.HET) is similarly calculated as the total number of sites minus the expected number of homozygous sites (E.HOM).
+hetstats$E.HET <- hetstats$N_SITES - hetstats$E.HOM.
+
+#measure of the proportion of observed heterozygous sites in each individual.
+hetstats$Ho <- hetstats$O.HET/hetstats$N_SITES
+
+#measure of the proportion of expected heterozygous sites in each individual.
+hetstats$He <- hetstats$E.HET/hetstats$N_SITES
+
+#merge with population data
+hetstats <- merge(hetstats, popdata, by.x="INDV", by.y="fly_ID")
+head(hetstats)
+
+#Since O.HET can never be greater than N_SITES (an individual cannot have more heterozygous sites than the total number of genotyped sites), the ratio O.HET/N_SITES will always be between 0 and 1.
+
+# Calculate the mean and standard deviation of observed heterozygosity (Ho)
+mean_Ho <- mean(hetstats$Ho, na.rm = TRUE)
+sd_Ho <- sd(hetstats$Ho, na.rm = TRUE)
+
+# Calculate the mean and standard deviation of expected heterozygosity (He)
+mean_He <- mean(hetstats$He, na.rm = TRUE)
+sd_He <- sd(hetstats$He, na.rm = TRUE)
+
+# Calculate the mean and standard deviation of inbreeding coefficient F(HOM)
+mean_F <- mean(hetstats$F, na.rm = TRUE)
+sd_F <- sd(hetstats$F, na.rm = TRUE)
+
+# Sample size (excluding NA values)
+n_He <- sum(!is.na(hetstats$He))
+n_Ho <- sum(!is.na(hetstats$Ho))
+n_F <- sum(!is.na(hetstats$F))
+
+# Calculate confidence intervals (95%)
+ci_He <- qt(0.975, df = n_He - 1) * sd_He / sqrt(n_He)
+ci_Ho <- qt(0.975, df = n_Ho - 1) * sd_Ho / sqrt(n_Ho)
+ci_F <- qt(0.975, df = n_F - 1) * sd_F / sqrt(n_F)
+
+
+```
+
+
+```{r}
+# Polt the Heterozygosity For individual
+violin_plot  <- ggplot(hetstats, aes(x = area, y = Ho)) +
+  geom_violin(aes(fill = area), alpha = 0.7) +
+  geom_point(aes(color = area), alpha = 0.8, size = 3) +
+  geom_rect(aes(xmin = -Inf, xmax = Inf, ymin = mean_He - sd_He, ymax = mean_He + sd_He),
+            fill = "gray", alpha = 0.2) +
+  scale_fill_manual(values = location_colors, guide = FALSE) +
+  scale_color_manual(values = location_colors, guide = FALSE) +
+  theme_classic() +
+  labs(x = NULL,
+       y = "Heterozygosity") +
+  theme(axis.title = element_text(size = 20),
+        axis.text = element_text(size = 20))
+
+# Save the plot. Figure S2.A
+ggsave(filename="SLF_Heterozygosity_violin_plot.pdf", plot=violin_plot_new, width=20, height=10, units="in")
+ggsave(filename="SLF_Heterozygosity_violin_plot.png", plot=violin_plot_new,width=20, height=10,dpi = 300) 
+
+```
+
+## 2.2 Inbreeding Coefficient F(HOM) for each individual
+```{r}
+# plot Inbreeding Coefficient F(HOM) for each individual
+Violin_plot_F <- ggplot(heatmap_data_F, aes(x = area, y = F)) +
+geom_violin(aes(fill = area), alpha = 0.7) +
+geom_point(aes(color = area), alpha = 0.8, size = 3, width = 0.2) +
+#geom_point(aes(y = F), color = "blue", alpha = 0.5, size = 2, shape = 17, width = 0.2) +
+scale_fill_manual(values = location_colors, guide = FALSE) +
+scale_color_manual(values = location_colors, guide = FALSE) +
+theme_classic() +
+labs(x = NULL,
+y = NULL) +
+theme(axis.title = element_text(size = 20),
+axis.text = element_text(size = 20))
+
+# save the plot. Figure S2.B
+ggsave(filename="SLF_F_Violin.pdf", plot=Violin_plot_F, width=20, height=10, units="in")
+ggsave(filename="SLF_F_Violin.png", plot=Violin_plot_F, width=20, height=10, dpi = 300)
+
+```
+
+## 2.3 Calculate the Ne (effetive population size for momi2 later)
+```{r}
+# Keightley, P. D., Ness, R. W., Halligan, D. L., & Haddrill, P. R. (2014). Estimation of the spontaneous mutation rate per nucleotide site in a Drosophila melanogaster full-sib family. Genetics, 196(1), 313–320. https://doi.org/10.1534/genetics.113.158758
+
+#"For Drosophila melanogaster there are relatively few estimates, ranging from 2.8 × 10−9 to 6.0 × 10−9 site−1 gen−1 (Haag-Liautard et al. 2007; Keightley et al. 2009, 2014; Schrider et al."
+mu <- 2.8e-9
+
+# Calculate average observed heterozygosity (Ho) across all individuals
+average_Ho <- mean(hetstats$Ho)
+
+# Calculate average expected heterozygosity (He) across all individuals
+average_He <- mean(hetstats$He)
+
+# You can use either average_Ho or average_He as your H for the Ne calculation
+# Here, I'll use average_He
+H <- average_He
+
+# Calculate Ne using the formula
+Ne <- H / (4 * mu * (1 - H))
+
+# Print the estimated Ne
+print(paste("Estimated effective population size (Ne) is:", Ne))
+
+```
+
+##2.4 Runs of homozygosity using plink, Figure 2A.
+--homozyg-density 30 --homozyg-gap 1000 --homozyg-kb 500 --homozyg-snp 50 --homozyg-window-het 1 --homozyg-window-snp 30 --homozyg-window-missing 5 --homozyg-window-threshold 0.05
+The -homozyg option in PLINK v1.9 makes ROH calls using a sliding window that scans along an individual's SNP data to detect homozygous stretches. PLINK first determines whether a given SNP is potentially in a ROH. To call a SNP as part of a ROH, PLINK calculates the proportion of completely homozygous windows that encompass that SNP. For example, a SNP inside a 100 SNP window has 100 chances to be part of a homozygous stretch as the window slides across one SNP at a time. Using the default -homozyg-window-threshold of 0.05, if 5% of these windows are completely homozygous, then the SNP will be included in the ROH. Finally, a ROH is called if the number of such "ROH SNPs" in a row surpasses a user-defined threshold in terms of SNPs (default = 100) and/or kb distance (default = 1, 000). PLINK provides numerous other user-defined parameters, such as the size of the sliding window measured in units of SNP length (default = 50), the number of heterozygous SNPs (default = 1) allowed in the ROH, the number of missing SNPs (default = 5) allowed in the ROH, and several other parameters detailed on the PLINK website (see http://pngu.mgh.harvard.edu/~purcell/plink/ 
+
+```{r}
+# Load necessary libraries
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+# Read the PLINK RoH data
+plink_roh <- read.delim('/Users/fallonmong/Documents/Documents - Fallon MacBook Pro/FallonPaper Final/Final/RoHPlink/SLF_data.hom', sep = '')
+
+# Re-categorize ROH segments into size classes
+plink_roh_size <- plink_roh %>%
+  mutate(size_class = case_when(
+    KB >= 500 & KB < 1000 ~ "0.5-1 Mb",
+    KB >= 1000 & KB < 5000 ~ "1-5 Mb",
+    KB >= 5000 ~ ">5 Mb"
+  ))
+
+# Recount the number of ROH segments and calculate total length in each size class for each sample
+plink_roh_size_counts <- plink_roh_size %>%
+  group_by(FID, size_class) %>%
+  summarise(roh_count = n(), total_length = sum(KB), .groups = 'drop')
+
+# Merge with location data
+plink_roh_size_counts <- plink_roh_size_counts %>%
+  left_join(popdata, by = c("FID" = "fly_ID"))
+
+# Order the samples by area
+plink_roh_size_counts <- plink_roh_size_counts %>%
+  arrange(area, FID) %>%
+  mutate(FID = factor(FID, levels = unique(FID)))
+
+# Calculate the average number of RoH segments per size class and area, adjusted for sample size
+plink_area_size_counts <- plink_roh_size_counts %>%
+  group_by(area, size_class) %>%
+  summarise(total_roh_count = sum(roh_count),
+            sample_size = n_distinct(FID),
+            avg_roh_count = total_roh_count / sample_size, .groups = 'drop')
+
+# Calculate the total number of ROH per area
+total_roh_per_area <- plink_roh_size_counts %>%
+  group_by(area) %>%
+  summarise(
+    total_roh_count = sum(roh_count),
+    sample_size = n_distinct(FID)
+  ) %>%
+  mutate(avg_roh_count = total_roh_count / sample_size)
+
+
+# Define colors for size classes
+size_class_colors <- c("0.5-1 Mb" = "#009E73", "1-5 Mb" = "#e6ab02", ">5 Mb" = "#c861a5")
+
+# order the size
+plink_area_size_counts <- plink_area_size_counts %>%
+  mutate(size_class = factor(size_class, levels = c("0.5-1 Mb", "1-5 Mb", ">5 Mb")))
+
+# Average number of RoH segments by size class and area (side-by-side)
+Roh_count <- ggplot(plink_area_size_counts, aes(x = area, y = avg_roh_count, fill = size_class)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  scale_fill_manual(values = size_class_colors) +
+  theme_minimal(base_size = 15) + 
+  labs(x = NULL,
+       y = "Total number of ROHs",
+       fill = "Size Class") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.title.y = element_text(size = 15),
+        axis.text.y = element_text(size = 12))
+
+# Save the plot. Figure 2A.
+ggsave("number_ROH.png", Roh_count, dpi = 300)
+ggsave("number_ROH.pdf", Roh_count)
+
+```
+```{r}
+#calculate the FROH
+# Genomic inbreeding coefficients were determined utilizing PLINK. The calculation method of FROH was as follows: FROH = (LROH/LAUTO) [38], where LROH represents the sum length of an individual’s ROH in the genome, and LAUTO is the specific length of the autosomal genome covered by SNPs of SLF (2252044789 bp).
+
+# 1: Calculate the number of ROH segments for each sample
+plink_roh_counts <- plink_roh %>%
+  group_by(FID) %>%
+  summarise(roh_count = n())
+
+# 2: Calculate the total length of ROH segments for each sample
+plink_roh_lengths <- plink_roh %>%
+  group_by(FID) %>%
+  summarise(total_length = sum(KB))
+
+# Combine the counts and lengths into one dataframe
+plink_roh_summary <- plink_roh_counts %>%
+  inner_join(plink_roh_lengths, by = "FID")
+
+# Merge with location data
+plink_roh_summary <- plink_roh_summary %>%
+  left_join(popdata, by = c("FID" = "fly_ID"))
+
+# Order the samples by area
+plink_roh_summary <- plink_roh_summary %>%
+  mutate(FID = factor(FID, levels = unique(FID[order(area)])))
+
+# Define the genome length covered by SLF SNPs
+LAUTO <- 2252044789/1000 #kb
+
+# Calculate FROH for each individual
+plink_roh_summary <- plink_roh_summary %>%
+  mutate(FROH = total_length / LAUTO)
+
+# FROH per area group
+FROH <- ggplot(plink_roh_summary, aes(x = area, y = FROH, fill = area)) +
+  geom_violin(aes(fill = area), alpha = 0.5) +
+  geom_point(aes(color = area), alpha = 0.8, size = 3) +
+  theme_minimal() +
+  scale_fill_manual(values = location_colors) +
+  scale_color_manual(values = location_colors) +
+  labs(x = NULL,
+       y = "F(ROH)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.title.y = element_text(size = 14),
+        axis.text.y = element_text(size = 14))
+
+# Save the plot. Figure 2C.
+ggsave("FROH.png", FROH, dpi = 300)
+ggsave("FROH.pdf", FROH)
+```
+
+```{r}
+### Calcaulte some stats, save it as csv. Supplementary table S2.
+
+# Calculate average FROH by area
+plink_roh_summary_area <- plink_roh_summary %>%
+  group_by(area) %>%
+  summarise(mean_froh = mean(FROH))
+
+#save it as csv
+write.csv(plink_roh_summary_area, file = "plink_merged_summary_roh_segments.csv", row.names = FALSE)
+
+mean_froh <- mean(plink_roh_summary$FROH)
+se_froh <- sd(plink_roh_summary$FROH) / sqrt(nrow(plink_roh_summary))
+
+# Calculate the 95% confidence interval
+alpha <- 0.05
+t_value <- qt(1 - alpha / 2, df = nrow(plink_roh_summary) - 1)
+ci_lower <- mean_froh - t_value * se_froh
+ci_upper <- mean_froh + t_value * se_froh
+
+# Print the results
+cat("Mean FROH:", mean_froh, "\n")
+cat("Standard Error (SE):", se_froh, "\n")
+cat("95% Confidence Interval (CI): [", ci_lower, ",", ci_upper, "]\n")
+
+```
+
+
+## 2.5 Tajima'D and Nucleotide Diversity
+Nucleotide diversity (often referred to using the symbol π) is the average pairwise difference between all possible pairs of individuals in our sample. It is a very intuitive and simple measure of genetic diversity, and is accurately estimated even with very few samples. .
+We can obtain the nucleotide diversity (π) from our VCF file using vcftools software. In our case we will collect the π value from each 10 kb (10,000 bp) window of the genome.
+
+```{r}
+# Load required libraries
+library(ggplot2)
+
+setwd("~/Documents/Documents - Fallon MacBook Pro/FallonPaper Final/Final/Pi")
+
+# Read the data
+Pi <- read.table("/Users/fallonmong/Documents/Documents - Fallon MacBook Pro/FallonPaper Final/Final/Final.SLF.PI.windowed.pi", header=TRUE)
+
+TD <- read.table("Final.SLF.TajimaD", header=TRUE)
+
+# Calculating the mean
+print(paste("Mean of Tajima's D:", mean(TD$TajimaD, na.rm = TRUE)))
+print(paste("Mean of Pi:", mean(Pi$PI)))
+
+# Histogram of TajimaD. Figure 2D.
+# 10KB window
+pdf("Tajimas_D_10KB.pdf", width=8, height=6)
+png("Tajimas_D_10KB.png")
+hist(TD$Tajima, breaks=30, col="lightblue", xlab="Tajima's D", main="")
+# Add a red vertical line at Tajima's D mean
+abline(v=0.157, col="red", lwd=2)
+# Close the PDF device
+dev.off()
+
+# Calculate the mean of Pi
+mean_pi <- mean(Pi$PI)
+
+# Create the plot across genome region 
+PI_plot <-  ggplot(Pi, aes(x = CHROM, y = PI)) + 
+  geom_line(color = "#c861a5") +
+  labs(x = "Genome Region", y = "Nucleotide Diversity (Pi)") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA) )
+
+#Save the plot. Figure 2B.
+ggsave(filename="PI.pdf", PI_plot)
+ggsave(filename="PI.png", plot=PI_plot, dpi = 300)
+
+```
+
+# Part 3: Population Structure.
+## 3.1 DAPC
+DAPC(Discriminant Analysis of Principal Components)
+This multivariate approach allows for the exploration of genetic variation by constructing synthetic variables from linear combinations of alleles, where these variables are designed to capture the essence of genetic diversity among individuals. Run DAPC with adegenet, run the job below on hpc, it's memory demanding.Do not run in R markdown here.
+
+```{r}
+# Load required libraries
+library(adegenet)
+library(vcfR)
+library(ggplot2)
+library(patchwork)
+library(tidyverse)
+library(data.table)
+
+# Set seed for reproducibility
+set.seed(0314)
+
+# Read the VCF file
+vcf <- read.vcfR("/Users/fallonmong/Documents/Documents - Fallon MacBook Pro/FallonPaper Old/10KB.maf0.01.missing0.9.id0.2.vcf")
+
+location_colors <- c("Bronx" = "#252525", 
+                     "Brooklyn" =  "#e6ab02",
+                     "Camden, NJ" = "#a65628",
+                     "Connecticut" = "#e41a1c" ,
+                     "Governor Island" = "#08589e",
+                     "Manhattan" = "#c861a5",
+                     "Staten island" = "#3690c0",
+                     "West Orange, NJ" = "#009E73")
+
+popdata <- read.csv("2022 SLF Info new.csv", header=T) 
+#link populations
+popgen_sort <- popdata[order(popdata$fly_ID),c("fly_ID","area")] 
+#ordered and reduced to just columns we need
+
+# Convert VCF to genlight object
+slf.gen = vcfR2genlight(vcf)
+
+#assigns the 'area' column of the sorted dataframe to the 'pop' slot of the genlight object.
+pop(slf.gen) <- popgen_sort[,2] #assign populations to gen file
+slf.gen@pop #verify population attribute
+
+#find cluster
+clusters_result <- find.clusters(slf.gen,parallel = require("parallel"), n.cores=8)
+
+SLF_dapc <- dapc(slf.gen, clusters_result$grp)
+
+scatter(SLF_dapc, posi.da="bottomleft")
+
+# cross-validation for the DAPC 
+optx_slf <- xvalDapc(tab(slf.gen, NA.method = "mean"), pop(slf.gen), parallel="multicore", ncpus=8L)  
+#look for leveling off window
+optx_slf[2:7]
+
+# Run DAPC after cross-validation and visualize DAPC, run it on hpc.
+
+# In our data, DAPC suggests to supported retaining 35 principal component axes to achieve the lowest MSE and 7 discriminant functions that captured 53.4% of the genetic variation. 
+
+dapc.allsamples35 <- dapc(slf.gen,  n.pca=35, n.da=7, var.contrib=T, scale=F,parallel = require("parallel"), n.cores=12)
+
+#visualize DAPC
+# Set up a PDF device
+pdf("withlabel.SLF.PC35.da7.allsamples.png")
+# Plot the DAPC scatter plot
+scatter(dapc.allsamples35, clabel=0.9, col=location_colors,
+        scree.pca=FALSE, scree.da =FALSE, cell=1.5, cex=1, mstree=FALSE)  # retain 2 df
+# Turn off the device
+dev.off() # Figure 3A
+
+```
+
+plot for posterior probability for area
+```{r}
+#Figure 3B. plot for posterior probability for area
+table(dapc.allsamples40$grp, dapc.allsamples40$assign)
+
+# the original genetic data is stored in `SLF_gen`
+pops <- pop(slf.gen)  # access population information
+
+pops <- (pop(slf.gen))
+orderedindivid <-rep(NA,98)
+for(i in 1:98){orderedindivid[i] <- paste(pops[i], i, sep="")} 
+
+#reorder individuals so that all are within a population
+rownames(dapc.allsamples40$posterior) <- orderedindivid
+dapc.results <- as.data.frame(dapc.allsamples40$posterior)
+dapc.results$pop <- pop(slf.gen)
+dapc.results$indNames <- rownames(dapc.results)
+dapc.results <- reshape2::melt(dapc.results)
+colnames(dapc.results) <- 
+  c("Original_Pop","Sample","Assigned_Pop","Posterior_membership_probability")
+
+
+all_SNPs_posterior_probability_plot =ggplot(dapc.results, aes(x=Sample, y=Posterior_membership_probability,
+                         fill=Assigned_Pop)) +
+  geom_bar(stat='identity') +  scale_fill_manual(values = plotcolors1) + 
+  facet_grid(~Original_Pop, scales = "free") + 
+  theme( axis.text.x=element_blank(),axis.ticks.x=element_blank()) + 
+  ylab("Posterior Membership Probability")
+
+# Save the ggplot. Figure 3B.
+ggsave(filename = "all_SNPs_posterior_probability_plot.png", 
+       plot = all_SNPs_posterior_probability_plot, 
+       width = 14, height = 5, dpi = 300)
+
+ggsave(filename = "all_SNPs_posterior_probability_plot.pdf", plot = all_SNPs_posterior_probability_plot,width=14, height=5 )
+```
+
+## 3.2 SNP-based phylogenetic tree
+Tree built part was done on hpc scripts
+```{r}
+library(ape)
+# Read the sample meta dataset
+popdata <- read.csv("2022 SLF Info new.csv", header = TRUE) 
+
+# Convert 'area' to a factor
+popdata$area <- as.factor(popdata$area)
+
+location_colors <- c("Bronx" = "#252525", 
+                     "Brooklyn" =  "#e6ab02",
+                     "Camden, NJ" = "#a65628",
+                     "Connecticut" = "#e41a1c" ,
+                     "Governor Island" = "#08589e",
+                     "Manhattan" = "#c861a5",
+                     "Staten island" = "#3690c0",
+                     "West Orange, NJ" = "#009E73")
+
+# Read the tree file
+treefile <- read.tree("Final.SNPTree.treefile")
+
+# Ensure the tree tip labels match with IDs in popdata
+treefile$tip.label <- as.character(popdata$fly_ID)
+
+# Map each tip label to its area based on popdata
+tip_areas <- popdata$area[match(treefile$tip.label, popdata$fly_ID)]
+
+# Replace tip labels with area names
+treefile$tip.label <- as.character(tip_areas)
+
+# Match the areas to the colors defined in location_colors
+tip_colors <- location_colors[as.character(tip_areas)]
+
+png("phylogenetic_tree_plot.pdf")
+# Plot the fan tree with tip colors and area names as tip labels
+ape::plot.phylo(x = treefile, type = "fan", tip.color = tip_colors)
+# Close the PDF device
+dev.off()
+# Figure 3C
+```
+## 3.3 Admixture
+K 1-10, 10 replicates each K for ADMIXTURE was done by hpc
+```{r}
+# Choose the best K
+#Use ADMIXTURE’s cross-validation procedure. A good value of K will exhibit a low cross-validation error compared to other K values. 
+setwd("/scratch/fm2371/Winchell/SLF_spring23/SLF_spring23/raw.vcf/Final/Admixture")
+
+# Read in the data
+data <- list.files(pattern = "Final\\.log.*\\.out", full.names = TRUE)
+
+# Use lapply to read in all log files at once
+bigData <- lapply(data, readLines)
+
+# Find the line that starts with "CV error"
+library(stringr)
+foundset_cv <- sapply(bigData, function(x) x[which(str_detect(x, "^CV error"))])
+
+# Extract the numeric value from the "CV error" line
+cv_errors <- as.numeric(sub("CV error \\(K=\\d+\\): (-?\\d+\\.\\d+).*", "\\1", foundset_cv))
+
+# Create a data frame with K values and corresponding CV errors
+cv_df <- data.frame(
+  K = rep(1:10, each = 10),
+  cv_error = cv_errors
+)
+
+# Calculate the mean CV error for each K
+cv_summary <- aggregate(cv_error ~ K, data = cv_df, FUN = mean)
+
+cv_summary_plot <- ggplot(cv_summary, aes(x = K, y = cv_error)) +
+  geom_line(color = "#2C3E50", size = 1) +
+  geom_point(color = "#E74C3C", size = 3) +
+  #geom_text(aes(label = K), nudge_x = 0.2, nudge_y = 0.002, size = 4, color = "#2C3E50") +
+  labs(x = "K", y = "Mean CV Error") +
+  theme_minimal() +
+  theme(
+    panel.grid.major = element_line(color = "gray90"),
+    panel.grid.minor = element_blank(),
+    axis.text = element_text(size = 12),
+    axis.title = element_text(size = 14, face = "bold"),
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    plot.margin = unit(c(1, 1, 1, 1), "cm")
+  ) +
+  ggtitle("Mean CV Error over 10 replicates") +
+  scale_x_continuous(breaks = seq(1, max(cv_summary$K), by = 1)) +
+  scale_y_continuous(limits = c(min(cv_summary$cv_error) - 0.005, max(cv_summary$cv_error) + 0.005))
+
+# Save the plot. Supplementary Figure S3.C
+ggsave(filename="cv_summary_plot.pdf", plot=cv_summary_plot, width=12, height=8, units="in")
+ggsave(filename="cv_summary_plot.png", plot=cv_summary_plot,dpi = 300)
+
+```
+
+Plot the ADMIXTURE Result after choose the best K
+```{r}
+# K=3 here has the lowest CV error
+
+# Set the working directory
+setwd("/Users/fallonmong/Documents/Documents - Fallon MacBook Pro/FallonPaper Final/Admixture")
+
+# Read popdata
+popdata <- read.csv("/Users/fallonmong/Documents/Documents - Fallon MacBook Pro/FallonPaper Final/Final/2022 SLF Info new.csv", header=T)
+popbed <- popdata[,c("fly_ID","area")]
+
+# custom colors
+plotcolors <- c("#c861a5","#3690c0","#e6ab02","#009E73","#a65628","#08589e","#e41a1c","#252525")
+
+# Set the desired K value
+K <- 3
+
+# File name based on K value
+file_name <- paste0("Final.", K, ".Q")
+
+# Read the data
+tbl <- read.table(file_name)
+
+# Convert the q matrix to a data frame
+q_df <- tbl %>%
+  as_tibble() %>%
+  mutate(individual = popbed$fly_ID,
+         region = popbed$area)
+
+# Convert the wide-form data to long-form
+q_df_long <- q_df %>%
+  gather(ancestry, proportion, paste0("V", 1:K)) %>%
+  arrange(region, individual)
+
+# Order the data by region, likely assignment, and assignment probability
+q_df_ordered <- q_df_long %>%I  
+  group_by(region, individual) %>%
+  mutate(likely_assignment = ancestry[which.max(proportion)],
+         assignment_prob = max(proportion)) %>%
+  arrange(region, likely_assignment, desc(assignment_prob)) %>%
+  ungroup() %>%
+  mutate(individual = forcats::fct_inorder(factor(individual)))
+
+# Calculate the width for each region
+region_width <- 1 / tapply(q_df_ordered$region, q_df_ordered$region, length)
+
+# Add the width column to the data frame
+q_df_ordered$width <- region_width[q_df_ordered$region]
+
+plot <- q_df_ordered %>%
+  ggplot(aes(x = individual, y = proportion, fill = ancestry)) +
+  geom_col(width = 0.9) +  # Use a fixed width here
+  scale_fill_manual(values = plotcolors[1:K]) +
+  labs(fill = "Ancestry") +
+  theme_minimal() +
+  facet_wrap(~ region, nrow = 1, strip.position = "bottom", scales = "free_x") +
+  theme(
+    panel.spacing.x = unit(0.5, "lines"),
+    axis.line = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    strip.background = element_rect(fill = "transparent", color = "black"),
+    strip.text = element_text(size = 12),
+    panel.background = element_blank(),
+    axis.title.x = element_blank(),
+    panel.grid = element_blank()
+  ) +
+  ylab("Proportion")
+
+# Save the plot to a PDF file. Figure 3D.
+pdf_file <- paste0("AdmixturePlot_K", K, ".pdf")
+ggsave(pdf_file, plot, width = 14, height = 8, device = "pdf")
+```
+
+# Part 4: Stats for momi2.
+Calculate the average AIC serial stats and CI/Sd after 1100 bootstraps, find the best model of fit.
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+
+# Step 1: Read and Clean Data
+momi2_bt <- read_lines("best_model_params.txt") # Read the data from the text file
+
+# Parse the data into a data frame
+bootstrap_data <- data.frame(bootstrap = numeric(), parameter = character(), value = numeric(), stringsAsFactors = FALSE)
+current_bootstrap <- NA
+
+for (line in momi2_bt) {
+  if (grepl("Replicate", line)) {
+    current_bootstrap <- as.numeric(gsub("\\D", "", line)) # Extract bootstrap number
+  } else if (line != "") {
+    parts <- strsplit(line, ": ")[[1]]
+    # Ensure the value is read as numeric without rounding
+    bootstrap_data <- rbind(bootstrap_data, data.frame(bootstrap = current_bootstrap, parameter = parts[1], value = as.numeric(parts[2], digits = 22)))
+  }
+}
+
+# Reorder and rename the bootstrap_data, per 14 rows belongs to one bootstrap
+n_rows_per_bootstrap <- 14
+total_bootstraps <- floor(nrow(bootstrap_data) / n_rows_per_bootstrap)
+
+# Remove any incomplete bootstrap sets
+bootstrap_data <- bootstrap_data[1:(total_bootstraps * n_rows_per_bootstrap), ]
+
+# Overwrite the 'bootstrap' column with the new sequence
+bootstrap_data$bootstrap <- rep(1:total_bootstraps, each = n_rows_per_bootstrap)
+
+# Step 2: Data Transformation
+# Pivot the data for analysis
+long_data_bt <- pivot_wider(
+  bootstrap_data, 
+  id_cols = bootstrap,  # Keep the bootstrap identifier
+  names_from = parameter, 
+  values_from = value
+)
+
+long_data_bt <- long_data_bt[, -c(16:23)]
+
+# Step 3: Statistical Summary
+# Calculate the mean, standard deviation, and 95% confidence intervals for each parameter
+summary_stats <- long_data_bt %>%
+  select(-bootstrap) %>% # Exclude the bootstrap column from summarisation
+  unnest(cols = everything()) %>% # Unnest all list-columns
+  summarise(across(everything(), list(
+    mean = ~ mean(.x, na.rm = TRUE),
+    sd = ~ sd(.x, na.rm = TRUE),
+    lower = ~ mean(.x, na.rm = TRUE) - qt(0.975, df = length(.x) - 1) * sd(.x, na.rm = TRUE) / sqrt(length(.x)),
+    upper = ~ mean(.x, na.rm = TRUE) + qt(0.975, df = length(.x) - 1) * sd(.x, na.rm = TRUE) / sqrt(length(.x))
+  ), .names = "{.col}_{.fn}")) # Custom naming to ensure correct splitting later
+
+
+# Ensure the calculated statistics maintain their precision
+summary_stats <- round(summary_stats, digits = 22)
+
+# The rest of the code for creating plot_data and writing the stats remains the same
+
+# Calculate the number of parameters (each parameter has mean, sd, lower, and upper statistics)
+# Number of unique parameters, assuming each has 4 statistics (mean, sd, lower, upper)
+num_parameters <- length(summary_stats) / 4
+
+# Generate the parameter names by removing statistic suffixes and ensuring uniqueness
+parameter_names <- unique(sub("_mean$|_sd$|_lower$|_upper$", "", names(summary_stats)))
+
+# Verifying the corrected parameter names
+parameter_names
+
+# Ensure the length of 'parameter' and 'statistic' vectors match the length of 'value' vector
+plot_data <- tibble(
+  parameter = rep(parameter_names, each = 4),
+  statistic = rep(c("Mean", "SD", "95% CI Lower", "95% CI Upper"), times = num_parameters),
+  value = as.vector(t(summary_stats))
+)
+
+# Save all stats result. Supplementary Table. Table S1.
+write.csv(plot_data, "stats.momi2.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+
+plot_data_wide <- plot_data %>%
+  pivot_wider(names_from = statistic, values_from = value)
+
+write.csv(plot_data_wide, "stats.momi2.wide.csv", sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+Calculate the mean of all AIC stats over 1100 replicates
+```{r}
+# Load necessary library
+library(stringr)
+
+# Function to extract values from a line based on the pattern
+extract_value <- function(line, pattern) {
+  matches <- str_match(line, pattern)
+  as.numeric(matches[1,2])
+}
+
+# Initialize lists to store values for each model
+values <- list("Constant" = list(AIC = numeric(), Delta_AIC = numeric(), AIC_Weight = numeric()),
+               "Expansion" = list(AIC = numeric(), Delta_AIC = numeric(), AIC_Weight = numeric()),
+               "Decline" = list(AIC = numeric(), Delta_AIC = numeric(), AIC_Weight = numeric()),
+               "Decline and Expand" = list(AIC = numeric(), Delta_AIC = numeric(), AIC_Weight = numeric()),
+               "Complex US" = list(AIC = numeric(), Delta_AIC = numeric(), AIC_Weight = numeric()),
+               "Complex Global" = list(AIC = numeric(), Delta_AIC = numeric(), AIC_Weight = numeric()))
+
+# Read the file line by line
+lines <- readLines("aic_and_likelihoods.txt")
+
+# Loop over each line
+for (line in lines) {
+  # Check if the line contains the information and process it
+  if (grepl("AIC:", line)) {
+    # Determine which model the line refers to and extract values
+    for (model in names(values)) {
+      if (grepl(model, line)) {
+        values[[model]]$AIC <- c(values[[model]]$AIC, extract_value(line, "AIC: ([0-9.]+)"))
+        values[[model]]$Delta_AIC <- c(values[[model]]$Delta_AIC, extract_value(line, "Delta AIC: ([0-9.]+)"))
+        values[[model]]$AIC_Weight <- c(values[[model]]$AIC_Weight, extract_value(line, "AIC Weight: ([0-9.e-]+)"))
+      }
+    }
+  }
+}
+
+# Calculate mean values for each model and parameter
+mean_values <- lapply(values, function(model_values) sapply(model_values, mean))
+
+# Convert to a more structured format (dataframe) for saving
+mean_values_df <- do.call(rbind, lapply(names(mean_values), function(model) {
+  cbind(Model = model, t(data.frame(mean_values[[model]])))
+}))
+
+# Ensure mean_values_df is a dataframe
+mean_values_df <- data.frame(mean_values_df)
+
+# Rename the levels of the Model factor
+mean_values_df$Model <- factor(mean_values_df$Model, levels = c("Constant", "Expansion", "Decline", 
+                                                                "Decline and Expand", "Complex US", "Complex Global"),
+                               labels = c("Constant Model", "Expansion Model", "Decline Model", 
+                                          "One Bottleneck Model", "Two Bottlenecks Model", "Three Bottlenecks Model"))
+
+
+# Save the means to a CSV file. Main text table. Table 1.
+write.csv(mean_values_df, "mean_model_values.csv", row.names = FALSE)
+
+```
+
+
+#Part 5: Landscape Genetics
+## 5.1 IBD (Isolation By Distance)
+Genetic distances were calculated as 1 minus the identity-by-state (IBS) values using PLINK v1.09 (Purcell et al., 2007), providing a measure of genetic divergence, with values closer to 1 indicating greater dissimilarity. This was done on hpc.
+
+Isolation by geographic distance
+```{r}
+# 1. Isolation by geographic distance
+library(hierfstat)
+library(geodist)
+library(ecodist)
+library(adespatial)
+library(vegan)
+library(ggplot2)
+
+# Read in geo data
+xySLF <- read.delim("2022 SLF Pop Gen Data.txt")
+names(xySLF) <- c("ID", "latitude", "longitude")
+xySLF$ID <- paste0(xySLF$ID, "_a")
+
+# Calculate the geographic distances using the Vincenty method and convert to kilometers
+geographic_dist_matrix_km <- geodist(xySLF, measure = "Vincenty") / 1000
+
+# Convert the geographic distance matrix to a dist object
+geographic_dist_km <- as.dist(geographic_dist_matrix_km)
+
+# Assuming geo_dist_matrix is a matrix with row and column names that match the IDs in xySLF$ID
+geo_dist_matrix <- as.matrix(geographic_dist_matrix_km)
+rownames(geographic_dist_matrix_km) <- xySLF$ID
+colnames(geographic_dist_matrix_km) <- xySLF$ID
+
+max_value <- max(geo_dist_matrix)
+print(paste("Maximum geo distance:", max_value))
+
+# Calculate the mean value of genetic distances
+mean_value <- mean(geo_dist_matrix)
+print(paste("Mean geo distance:", mean_value))
+min(geo_dist_matrix)
+max(geo_dist_matrix)
+
+# Log-transform the geographic distance matrix
+geo_dist_matrix_log <- log(geo_dist_matrix + 1)
+
+# Change to long format
+geo_dist_long <- reshape2::melt(geographic_dist_matrix_km)
+names(geo_dist_long) <- c("ID1", "ID2", "GeoDistance")
+
+# Load the genetic distance calculated by plink
+# Convert the genetic distance matrix to a dist object
+genetic_dist <- read.delim('Final.SLF.mdist', header = F)
+genetic_dist <- as.matrix(genetic_dist)
+
+max_value <- max(genetic_dist)
+print(paste("Maximum genetic distance:", max_value))
+
+# Calculate the mean value of genetic distances
+mean_value <- mean(genetic_dist)
+print(paste("Mean genetic distance:", mean_value))
+
+# Set the column and row names of the matrix
+colnames(genetic_dist) <- xySLF$ID
+rownames(genetic_dist) <- xySLF$ID
+
+# Change it to long format
+ibs_long <- reshape2::melt(as.matrix(genetic_dist))
+names(ibs_long) <- c("ID1", "ID2", "IBSDistance")
+
+# Make sure they are character
+geo_dist_long$ID1 <- as.character(geo_dist_long$ID1)
+geo_dist_long$ID2 <- as.character(geo_dist_long$ID2)
+ibs_long$ID1 <- as.character(ibs_long$ID1)
+ibs_long$ID2 <- as.character(ibs_long$ID2)
+
+# Merge the two datasets
+combined_data_ibs <- merge(geo_dist_long, ibs_long, by = c("ID1", "ID2"))
+combined_data_ibs <- combined_data_ibs[combined_data_ibs$GeoDistance > 0, ] # removing zero distances if any
+
+# Log-transform the distances
+combined_data_ibs$GeoDistance_log <- log(combined_data_ibs$GeoDistance + 1)
+combined_data_ibs$IBSDistance_log <- log(combined_data_ibs$IBSDistance + 1)
+
+IBS_dist_Geo_log <- ggplot(combined_data_ibs, aes(x = GeoDistance_log, y = IBSDistance)) +
+  geom_point(color = "#3690c0") +
+  geom_smooth(method = "lm", color = "black") +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),  # Remove grid lines
+        axis.line = element_line(color = "black", size = 0.3)) +  # Add axis lines
+  labs(x = "Log Geographic Pairwise Distance (km)", y = "Genetic Pairwise Distance")
+
+#mentel test
+mantel_result_log <- mantel(genetic_dist, geo_dist_matrix_log, method = "pearson", permutations = 9999)
+print(mantel_result_log)
+
+# Saving the plot. Figure 5A.
+ggsave("Geo_IBS_log.pdf", plot = IBS_dist_Geo_log, width = 10, height = 8)
+ggsave("Geo_IBS_log.png", plot = IBS_dist_Geo_log, dpi = 300)
+
+```
+
+## 5.2 IBE (Isolation by Environment)
+```{r}
+# 2. Isolation by env distance
+library(LandGenCourse)
+library(vegan)    
+library(psych)    
+library(adegenet)
+library(dplyr)
+
+env <- read.csv("/Users/fallonmong/Documents/Documents - Fallon MacBook Pro/FallonPaper Final/GEA/2022_SLF_env.csv")
+
+#need to consider multicollinearity
+# Apply log10(x + 1) transformation for env data to improve normality and reduce heteroscedasticity
+normalized_env <- env
+normalized_env[, 6:27] <- lapply(normalized_env[, 6:27], function(x) log10(x + 1))
+
+# Calculate Euclidean distances using orginal dataset
+normalized_env <- normalized_env[, -11]
+env_distances_all <- dist(normalized_env[, 6:26], method = "euclidean")
+
+# Convert the distance matrix to a full matrix
+env_distances_matrix <- as.matrix(env_distances_all)
+max(env_distances_matrix)
+mean(env_distances_matrix)
+min(env_distances_matrix)
+
+# the order of env_distance_matrix is the same as popdata, but not the same as IBS/ngsDist matrix, need to match the ID
+rownames(env_distances_matrix) <- xySLF$ID
+colnames(env_distances_matrix) <- xySLF$ID
+env_dist_long <- reshape2::melt(env_distances_matrix)
+names(env_dist_long) <- c("ID1", "ID2", "EnvDistance")
+
+# Convert genetic_dist to long format
+ibs_long <- reshape2::melt(as.matrix(genetic_dist))
+names(ibs_long) <- c("ID1", "ID2", "IBSDistance")
+
+# Ensure that ID1 and ID2 are in the correct format (e.g., as characters)
+env_dist_long$ID1 <- as.character(env_dist_long$ID1)
+env_dist_long$ID2 <- as.character(env_dist_long$ID2)
+ibs_long$ID1 <- as.character(ibs_long$ID1)
+ibs_long$ID2 <- as.character(ibs_long$ID2)
+# Merge the two datasets
+combined_data_env <- merge(env_dist_long, ibs_long, by = c("ID1", "ID2"))
+
+combined_data_env <- combined_data_env[combined_data_env$EnvDistance > 0,] # removing zero distances if any
+
+IBS_dist_env <- ggplot(combined_data_env, aes(x = EnvDistance, y = IBSDistance)) +
+  geom_point(color = "#3690c0") +
+  geom_smooth(method = "lm", color = "black") +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),  # Remove grid lines
+        axis.line = element_line(color = "black", size = 0.3)) +  # Add axis lines
+  labs(x = "Log Environmental Pairwise Distance", y = "Genetic Pairwise Distance")
+
+# Saving the plot. Figure 5B.
+ggsave("Env_IBS_log.pdf", plot = IBS_dist_env, width = 10, height = 8)
+ggsave("Env_IBS_log.png", plot = IBS_dist_env, dpi = 300)
+
+# model test
+mantel_result_env <- mantel(genetic_dist, env_distances_matrix, method="pearson", permutations=999)
+print(mantel_result_env)
+
+```
+Calculate some stats
+```{r}
+# Calculate the standard deviation of the distances
+sd_distances <- sd(env_distances_matrix)
+
+# Calculate the mean of the distances
+mean_distances <- mean(env_distances_matrix)
+
+# Function to calculate confidence interval
+confidence_interval <- function(data, confidence = 0.95) {
+  n <- length(data)
+  se <- sd(data) / sqrt(n)
+  alpha <- 1 - confidence
+  error_margin <- qt(1 - alpha / 2, df = n - 1) * se
+  lower_bound <- mean(data) - error_margin
+  upper_bound <- mean(data) + error_margin
+  return(c(lower_bound, upper_bound))
+}
+
+# Flatten the distance matrix to a vector for CI calculation
+distance_vector <- as.vector(env_distances_matrix)
+
+# Calculate the 95% confidence interval for the distances
+ci_distances <- confidence_interval(distance_vector)
+
+# Output the results
+list(
+  max_distance = max(env_distances_matrix),
+  mean_distance = mean_distances,
+  min_distance = min(env_distances_matrix),
+  sd_distance = sd_distances,
+  ci_lower_bound = ci_distances[1],
+  ci_upper_bound = ci_distances[2]
+)
+```
+
+# Part 6:EEMS
+```{bash}
+#RUN EEMS, run it on hpc
+
+#PARAMS FILE
+datapath = ../lanternfly/manhattan
+mcmcpath = ../lanternfly/manhattan-nDemes50-chain1 (chain 2, chain 3, etc)
+nIndiv = 71
+nSites = 299364
+nDemes = 50
+diploid = true
+numMCMCIter = 2000000
+numBurnIter = 1000000
+numThinIter = 9999
+
+#SCRIPTS
+./runeems_snps --params lanternparams1.ini --seed 123
+./runeems_snps --params lanternparams1.ini --seed 546
+./runeems_snps --params lanternparams1.ini --seed 978
+
+```
+
+Plot the result of EEMS
+```{r}
+# Load necessary libraries
+library("devtools")
+library("reemsplots2")
+library('ggplot2')
+library('dplyr')
+library('sp')
+library("RColorBrewer")
+library("rworldmap")
+library("rworldxtra")
+
+# Set working directory
+setwd("~/Documents/Documents - Fallon MacBook Pro/FallonPaper Final/EEMS")
+
+# Set the path to your EEMS output directories
+mcmcpath <- "/Users/fallonmong/Documents/Documents - Fallon MacBook Pro/FallonPaper Final/EEMS/50demes/manhattan-nDemes50-chain1"
+mcmcpath2 <- "/Users/fallonmong/Documents/Documents - Fallon MacBook Pro/FallonPaper Final/EEMS/50demes/manhattan-nDemes50-chain2"
+mcmcpath3 <- "/Users/fallonmong/Documents/Documents - Fallon MacBook Pro/FallonPaper Final/EEMS/50demes/manhattan-nDemes50-chain3"
+
+# Generate EEMS plots
+plots1 <- make_eems_plots(mcmcpath, longlat = TRUE)
+plots2 <- make_eems_plots(mcmcpath2, longlat = TRUE)
+plots3 <- make_eems_plots(mcmcpath3, longlat = TRUE)
+
+# Manhattan polygon coordinates
+polygon_coords <- data.frame(
+  long = c(590701.50, 590299.33, 590013.58, 589495.00, 588733.00, 588224.99, 587558.24, 586679.83, 583779.99,
+           583748.24, 582965.07, 583039.15, 584118.65, 584626.65, 586002.49, 586425.82, 586584.57, 586669.24,
+           586531.66, 586753.91, 587812.24, 588733.00, 589283.33, 590267.58, 589727.83, 589389.16, 590669.75,
+           591082.50, 590775.58, 590701.50),
+  lat = c(4524878.60, 4524476.44, 4523756.77, 4522973.60, 4522709.02, 4520412.43, 4519057.76, 4517375.01,
+          4511850.49, 4509289.32, 4506336.57, 4506304.82, 4506495.32, 4506897.48, 4507257.32, 4507775.90,
+          4508230.99, 4508781.32, 4509987.82, 4510940.33, 4512601.91, 4513617.91, 4514464.58, 4516941.09,
+          4519004.84, 4520624.10, 4523333.43, 4524137.77, 4524804.52, 4524878.60)
+)
+
+# Sample coordinates
+sample_coords <- data.frame(
+  long = c(583478.04, 583209.55, 583608.43, 583609.43, 584091.27, 583676.98, 584229.47, 584252.93, 584017.31, 584157.70, 583919.12, 583677.65, 583752.52, 589746.41, 589912.82, 590036.71, 583423.48, 584585.93, 584749.03, 589464.02, 583675.07, 584868.86, 583614.05, 584515.68, 584455.84, 584888.23, 590123.39, 589483.72, 585320.57, 583053.56, 584828.19, 584828.19, 583454.62, 584627.28, 584592.23, 585402.19, 584889.77, 585321.75, 585433.32, 587762.42, 587762.42, 587762.42, 587762.42, 584886.21, 584886.21, 584953.98, 584701.80, 585869.03, 584468.87, 584468.87, 585288.89, 584836.28, 584836.28, 584532.68, 584532.68, 586525.26, 586420.07, 586317.77, 586317.77, 586505.30, 583698.38, 584584.09, 584537.34, 584537.34, 583567.62, 583567.62, 588350.50, 587529.55, 585248.26, 584664.43, 583616.62, 584031.72),
+  lat = c(4506066.62, 4507192.56, 4509915.17, 4509691.80, 4509650.63, 4509692.57, 4509602.85, 4509603.11, 4509692.95, 4509725.39, 4510086.10, 4509483.86, 4510175.14, 4521327.88, 4521580.82, 4522277.35, 4506100.42, 4509448.64, 4509300.37, 4521042.44, 4509861.30, 4509226.50, 4510089.31, 4509017.08, 4508932.02, 4509305.55, 4522428.29, 4521087.09, 4509311.62, 4507573.09, 4509385.91, 4509385.91, 4505960.88, 4509303.68, 4509273.97, 4509264.82, 4509301.98, 4509209.50, 4509275.17, 4518309.82, 4518309.82, 4518309.82, 4518309.82, 4509776.26, 4509776.26, 4509758.16, 4509330.73, 4507802.18, 4509345.17, 4509345.17, 4509275.73, 4509417.09, 4509417.09, 4508934.01, 4508934.01, 4514560.30, 4514389.20, 4513897.29, 4513897.29, 4514534.53, 4510714.20, 4509609.60, 4509784.48, 4509784.48, 4510778.23, 4510778.23, 4520091.99, 4519055.25, 4514493.30, 4510117.89, 4510925.33, 4509614.42)
+)
+
+# Create SpatialPolygons object for Manhattan polygon
+polygon <- SpatialPolygons(list(Polygons(list(Polygon(as.matrix(polygon_coords))), "1")))
+
+# Convert sample coordinates to SpatialPoints
+sample_points <- SpatialPoints(sample_coords)
+
+# Filter points that are within the polygon using over function
+inside_points <- sample_points[!is.na(over(sample_points, polygon)), ]
+
+# Convert back to data frame for plotting
+inside_coords <- as.data.frame(inside_points@coords)
+
+# Ensure column names match
+colnames(inside_coords) <- c("long", "lat")
+
+# Function to create a high-resolution map overlay
+create_high_res_map <- function(projection) {
+  map_world <- getMap(resolution = "high")
+  map <- spTransform(map_world, CRS(projection))
+  return(map)
+}
+
+# Add the map of the world and adjust the plot
+high_res_map <- create_high_res_map("+proj=merc +datum=WGS84")
+
+# Adjust the aspect ratio and other settings of the final plot
+final_plot <- plots2$mrates02 +
+  #scale_fill_gradientn(colours = brewer.pal(11, "RdBu")) +
+  geom_polygon(data = polygon_coords, aes(x = long, y = lat), color = "black", fill = NA) + # Add polygon outline
+  #geom_point(data = inside_coords, aes(x = long, y = lat), color = "#c861a5", size = 3) + # Add sample locations within polygon
+  theme(
+    aspect.ratio = 2.5,  # Adjust the aspect ratio here
+    plot.margin = margin(t = 10, r = 10, b = 10, l = 10),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank()
+  ) +
+  coord_fixed(ratio = 2.5)
+
+# Save the adjusted plot, Figure 5C.
+ggsave("EEMS_50demes_without_samples.png", final_plot, width = 10, height = 20, dpi = 600)
+ggsave("EEMS_50demes_without_samples.pdf", final_plot, width = 10, height = 20)
+
+```
+
+# The END
