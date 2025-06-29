@@ -2,8 +2,7 @@ This repository contains all scripts, pipelines, and metadata used in our study,
 
 We integrate whole genome resequencing, mitochondrial phylogeography, and eco-evolutionary modeling to dissect how cities facilitate rapid evolution and global biological invasions.
 
-1. Momi2_models.ipynb/
-   
+1. Momi2_models.ipynb, momi2_all_model.py
 Contains all demographic inference analyses performed with momi2, including:
 Construction of the Site Frequency Spectrum (SFS)
 Eight alternative demographic scenarios
