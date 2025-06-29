@@ -2,21 +2,24 @@ This repository contains all scripts, pipelines, and metadata used in our study,
 
 We integrate whole genome resequencing, mitochondrial phylogeography, and eco-evolutionary modeling to dissect how cities facilitate rapid evolution and global biological invasions.
 
-1. Momi2_models.ipynb
+1. Momi2_models.ipynb/
+   
 Contains all demographic inference analyses performed with momi2, including:
 Construction of the Site Frequency Spectrum (SFS)
 Eight alternative demographic scenarios
 Visualization of demographic history and effective population sizes
 
-2. SLF_R_scripts/
+3. SLF_R_scripts/
+   
 This script will contain all R scripts used for:
-Genetic diversity statistics (π, Ho, Tajima’s D, ROH, etc.)
+Genetic diversity statistics (ROH,heterozygosity etc.)
 Population structure (PCA, Admixture, sNMF)
 Isolation by Distance / Environment (IBD, IBE)
-Genotype-environment association (RDA, pcadapt)
-Selection scan integration and GO term enrichment
+Genotype-environment association (RDA)
+Selection scan integration and GO term enrichment (pcadapt etc.)
 
-3. SLF_Analysis_Pipeline_HPC/
+5. SLF_Analysis_Pipeline_HPC/
+   
 High-performance computing (HPC) shell scripts for preprocessing and analysis of whole-genome data using tools available on NYU’s Greene HPC cluster.
 These include pipelines for:
 Quality control: FastQC
@@ -27,12 +30,14 @@ Mitochondrial genome mapping: bwa mem, samtools, bcftools, and custom consensus 
 Post-processing: vcftools, bcftools, plink, and others
 Refer to SLF_GATK_HPC_Pipeline_Final/ and ANGSD_pipeline/ for complete example job scripts.
 
-4. ANGSD_pipeline/
+7. ANGSD_pipeline/
+   
 Contains scripts and parameter files used with ANGSD for:
 Estimating genome-wide diversity
 Population structure and genetic distance.
 
-5. Mt_DNA_Phylogeography_Pipeline/
+9. Mt_DNA_Phylogeography_Pipeline/
+    
 Complete pipeline for mitogenomic haplotype analysis:
 Consensus mitogenome generation
 Multiple sequence alignment using MAFFT
