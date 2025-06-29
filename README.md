@@ -34,12 +34,12 @@ Consensus mitogenome generation
 Multiple sequence alignment using MAFFT
 Maximum likelihood phylogenetic reconstruction with IQ-TREE
 Visualization using ggtree, pegas, and lineage assignments
-Includes scripts for integrating your samples with published mitogenomes (Du et al. 2021)
+Includes scripts for integrating our samples with published mitogenomes (Du et al. 2021)
 
 Metadata Branch/
 
 Metadata for 118 SLF samples and Environmental Data:
-Contains metadata files for the 98 spotted lanternfly samples used in the study, along with all associated environmental data. This includes collection information, GPS coordinates, accession number and Bio Project Number for each spotted lanternfly raw reads on NCBI, and environmental variables used in the analyses.
+Contains metadata files for the 118 spotted lanternfly samples used in the study, along with all associated environmental data. 
 
 SLF_R_scripts Branch/
    
