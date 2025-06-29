@@ -1,0 +1,134 @@
+#!/bin/bash
+
+################################################################################
+# LYCORMA DELICATULA MITOCHONDRIAL PHYLOGEOGRAPHY PIPELINE
+# Author: Fallon Meng
+# Description: Full pipeline for mtDNA variant calling, filtering,
+#              consensus generation, alignment, and phylogenetic analysis
+#              for 510 SLF individuals + 1 outgroup
+################################################################################
+
+# SET ENVIRONMENT MODULES AND PATHS
+module load bwa/intel/0.7.17 samtools/intel/1.14 picard/2.17.11 gatk/4.3.0.0 mosdepth/0.3.1 mafft/intel/7.475
+
+REF="/scratch/work/winchell/Lanternfly/WGS/17_MT/SLF_mito_ref.fasta"
+ID_FILE="/scratch/work/winchell/Lanternfly/WGS/17_MT/sample_ids.txt"
+
+# ----------------------------- STEP 1: ALIGNMENT ------------------------------
+# Paired-end mapping to mitochondrial reference
+
+FASTQ_DIR="/scratch/work/winchell/Lanternfly/WGS/02_trimmed"
+ALIGN_DIR="/scratch/work/winchell/Lanternfly/WGS/17_MT/mapped_bams"
+mkdir -p $ALIGN_DIR
+
+# Loop through samples (submit as array job with SLURM)
+ID=$(sed -n "${SLURM_ARRAY_TASK_ID}p" $ID_FILE)
+R1="${FASTQ_DIR}/n01_${ID}_val_1.fq.gz"
+R2="${FASTQ_DIR}/n02_${ID}_val_2.fq.gz"
+
+bwa mem -t 8 "$REF" "$R1" "$R2" > "$ALIGN_DIR/${ID}.sam"
+samtools view -@ 8 -Sb "$ALIGN_DIR/${ID}.sam" | samtools sort -@ 8 -o "$ALIGN_DIR/${ID}.sorted.bam" -
+rm "$ALIGN_DIR/${ID}.sam"
+samtools index "$ALIGN_DIR/${ID}.sorted.bam"
+
+# ------------------------ STEP 2: ADD READ GROUPS -----------------------------
+RG_DIR="/scratch/work/winchell/Lanternfly/WGS/17_MT/RG_bams"
+mkdir -p $RG_DIR
+
+java -jar $PICARD_JAR AddOrReplaceReadGroups \
+  I="$ALIGN_DIR/${ID}.sorted.bam" \
+  O="$RG_DIR/${ID}_RG.bam" \
+  RGID=$ID RGLB=lib1 RGPL=illumina RGPU=unit1 RGSM=$ID CREATE_INDEX=true
+
+# -------------------------- STEP 3: DEDUPLICATION -----------------------------
+DEDUP_DIR="/scratch/work/winchell/Lanternfly/WGS/17_MT/dedup_bams"
+mkdir -p $DEDUP_DIR
+
+gatk --java-options "-Xmx20G" MarkDuplicates \
+  -I "$RG_DIR/${ID}_RG.bam" \
+  -O "$DEDUP_DIR/${ID}_dedup.bam" \
+  -M "$DEDUP_DIR/${ID}_dedup_metrics.txt" \
+  --CREATE_INDEX true
+
+# ---------------------- STEP 4: DEPTH METRICS (MOSDEPTH) ----------------------
+MOS_DIR="/scratch/work/winchell/Lanternfly/WGS/17_MT/new_mosdepth_output"
+mkdir -p $MOS_DIR
+mosdepth --threads 8 -n --fast-mode "$MOS_DIR/${ID}" "$DEDUP_DIR/${ID}_dedup.bam"
+
+# -------------------------- STEP 5: VARIANT CALLING ---------------------------
+GVCF_DIR="/scratch/work/winchell/Lanternfly/WGS/17_MT/gvcfs_haploid"
+mkdir -p $GVCF_DIR
+
+gatk HaplotypeCaller \
+  -R "$REF" \
+  -I "$DEDUP_DIR/${ID}_dedup.bam" \
+  -O "$GVCF_DIR/${ID}.haploid.g.vcf.gz" \
+  -ERC GVCF \
+  --sample-ploidy 1
+
+# ------------------------ STEP 6: JOINT GENOTYPING ----------------------------
+VCF_DIR="/scratch/work/winchell/Lanternfly/WGS/17_MT/vcf_joint"
+mkdir -p $VCF_DIR
+
+COMBINED_GVCF="$VCF_DIR/combined.g.vcf.gz"
+JOINT_VCF="$VCF_DIR/joint_genotyped.vcf.gz"
+
+# Combine GVCFs
+gatk CombineGVCFs -R "$REF" \
+  $(for gvcf in $GVCF_DIR/*.g.vcf.gz; do echo "-V $gvcf "; done) \
+  -O "$COMBINED_GVCF"
+
+# Joint Genotyping
+gatk GenotypeGVCFs -R "$REF" -V "$COMBINED_GVCF" -O "$JOINT_VCF" --sample-ploidy 1
+gatk IndexFeatureFile -I "$JOINT_VCF"
+
+# ------------------------ STEP 7: SNP HARD FILTERING --------------------------
+SNPS_VCF="$VCF_DIR/mt_SNPs.vcf.gz"
+FILTERED_VCF="$VCF_DIR/mt_SNPs.filtered.vcf.gz"
+PASSED_VCF="$VCF_DIR/PASS_mt_SNPs.filtered.vcf.gz"
+
+# Extract SNPs
+gatk SelectVariants -R "$REF" -V "$JOINT_VCF" --select-type-to-include SNP -O "$SNPS_VCF"
+
+# Hard filtering
+gatk VariantFiltration \
+  -R "$REF" -V "$SNPS_VCF" -O "$FILTERED_VCF" \
+  --filter-expression "QUAL < 30.0" --filter-name "LowQUAL" \
+  --filter-expression "QD < 2.0" --filter-name "LowQD" \
+  --filter-expression "FS > 60.0" --filter-name "StrandBias_FS" \
+  --filter-expression "MQ < 40.0" --filter-name "LowMQ" \
+  --filter-expression "SOR > 3.0" --filter-name "StrandBias_SOR" \
+  --filter-expression "MQRankSum < -12.5 || MQRankSum > 12.5" --filter-name "MQRankSumOutlier" \
+  --filter-expression "ReadPosRankSum < -8.0 || ReadPosRankSum > 8.0" --filter-name "ReadPosRankSumOutlier"
+
+# Retain PASS variants only
+bcftools view -f PASS -Oz -o "$PASSED_VCF" "$FILTERED_VCF"
+bcftools index "$PASSED_VCF"
+
+# ---------------------- STEP 8: CONSENSUS GENERATION --------------------------
+CONS_DIR="/scratch/work/winchell/Lanternfly/WGS/17_MT/mito_consensus_standard"
+mkdir -p $CONS_DIR
+
+SAMPLES=($(bcftools query -l $PASSED_VCF))
+SAMPLE_INDEX=$((SLURM_ARRAY_TASK_ID - 1))
+SAMPLE=${SAMPLES[$SAMPLE_INDEX]}
+
+# Masked consensus
+bcftools consensus -f "$REF" -s "$SAMPLE" -m "$CONS_DIR/${SAMPLE}_mask.bed" -o "$CONS_DIR/${SAMPLE}.fasta" "$PASSED_VCF"
+sed -i "s/^>.*/>$SAMPLE/" "$CONS_DIR/${SAMPLE}.fasta"
+
+# IUPAC version
+bcftools consensus -f "$REF" -s "$SAMPLE" -I -o "$CONS_DIR/${SAMPLE}_iupac.fasta" "$PASSED_VCF"
+sed -i "s/^>.*/>$SAMPLE/" "$CONS_DIR/${SAMPLE}_iupac.fasta"
+
+# --------------------- STEP 9: ALIGNMENT & TREE INFERENCE ----------------------
+# Concatenate to get combined FASTA of 511 genomes (118 new + 392 published + 1 outgroup)
+cat $CONS_DIR/*.fasta Du_et_al_392_published.fasta Lycorma_meliae_outgroup.fasta > all_511_mitogenomes.fasta
+
+# Align using MAFFT
+mafft --globalpair --maxiterate 1000 --anysymbol --adjustdirection --thread 16 all_511_mitogenomes.fasta > aligned_511.fasta
+
+# Haplotype identification in R using pegas, see another R sript file
+
+# IQ-TREE with unique haplotypes
+iqtree -s Final_WG_haplotypes.fasta -m MFP -bb 1000 -alrt 1000 -nt 16 -pre mtDNA_tree -o Lycorma_meliae_outgroup

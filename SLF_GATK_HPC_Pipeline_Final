@@ -1,0 +1,844 @@
+#!/bin/bash
+
+#SBATCH --job-name=SLF_Pipeline
+#SBATCH --output=SLF_pipeline_%j.out
+#SBATCH --error=SLF_pipeline_%j.err
+#SBATCH --time=168:00:00  # Adjust as necessary
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=64G
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=fm2371@nyu.edu
+
+# Pipeline for Spotted Lanternfly (SLF) Data Analysis
+# Organized into major numbered steps, with sub-steps for detailed processing
+
+# ===========================================
+# Step 1: Quality Trimming of Raw Reads
+# ===========================================
+# This step removes adapter sequences, low-quality bases, and short reads.
+echo "Step 1: Trimming raw reads"
+
+# Load the necessary module for trimming
+module purge
+module load trimgalore/0.6.6
+
+# Directory setup
+raw_data_dir="/scratch/work/winchell/Lanternfly/Aria/01_combined_raw_data"
+trimmed_dir="/scratch/work/winchell/Lanternfly/Aria/02_trimmed"
+mkdir -p $trimmed_dir
+
+# Loop through all raw R1 files for trimming
+cd $raw_data_dir
+for R1 in *_combined_R1.fastq.gz; do
+    PREFIX=$(basename "$R1" "_combined_R1.fastq.gz")
+    trim_galore --paired --fastqc -j 4 --stringency 3 --length 50 \
+        --output_dir $trimmed_dir "${PREFIX}_combined_R1.fastq.gz" "${PREFIX}_combined_R2.fastq.gz"
+done
+
+echo "Step 1 completed: Trimmed reads are in $trimmed_dir"
+
+# ===========================================
+# Step 2: Alignment to Reference Genome
+# ===========================================
+# Align reads to the SLF reference genome using BWA and generate sorted BAM files.
+echo "Step 2: Alignment"
+
+# Load modules
+module purge
+module load bwa/intel/0.7.17
+module load samtools/intel/1.14
+
+# Directory setup
+reference="/scratch/fm2371/Winchell/sex/genome/SLF_Hap1.fasta"
+alignment_dir="/scratch/work/winchell/Lanternfly/Aria/03_align_bam"
+mkdir -p $alignment_dir
+
+# Align paired-end reads
+cd $trimmed_dir
+for R1 in *_val_1.fq.gz; do
+    PREFIX=$(basename "$R1" "_val_1.fq.gz")
+    bwa mem -t 8 $reference "${PREFIX}_val_1.fq.gz" "${PREFIX}_val_2.fq.gz" | \
+        samtools view -Sb - > "${alignment_dir}/${PREFIX}.bam"
+    samtools sort -@ 8 "${alignment_dir}/${PREFIX}.bam" -o "${alignment_dir}/${PREFIX}_sorted.bam"
+    samtools index "${alignment_dir}/${PREFIX}_sorted.bam"
+    rm "${alignment_dir}/${PREFIX}.bam"  # Cleanup intermediate files
+done
+
+echo "Step 2 completed: Aligned reads are in $alignment_dir"
+
+# ===========================================
+# Step 3: Add Read Groups to BAM Files
+# ===========================================
+# Add metadata to BAM files for downstream analysis.
+echo "Step 3: Adding Read Groups"
+
+module purge
+module load picard/2.17.11
+
+rg_dir="/scratch/work/winchell/Lanternfly/Aria/05_RG_bam"
+mkdir -p $rg_dir
+
+for bam in $alignment_dir/*_sorted.bam; do
+    PREFIX=$(basename "$bam" "_sorted.bam")
+    java -jar /share/apps/picard/2.17.11/picard.jar AddOrReplaceReadGroups \
+        I=$bam O="${rg_dir}/${PREFIX}_RG.bam" \
+        RGID=$PREFIX RGLB=lib1 RGPL=illumina RGPU=unit1 RGSM=$PREFIX CREATE_INDEX=true
+done
+
+echo "Step 3 completed: Read groups added to BAM files in $rg_dir"
+
+# ===========================================
+# Step 4: Mark Duplicates
+# ===========================================
+# Identify and mark duplicate reads to avoid biases in variant calling.
+echo "Step 4: Marking Duplicates"
+
+module purge
+module load gatk/4.3.0.0
+
+dedup_dir="/scratch/work/winchell/Lanternfly/Aria/06_dedup"
+mkdir -p $dedup_dir
+
+for bam in $rg_dir/*.bam; do
+    PREFIX=$(basename "$bam" "_RG.bam")
+    /share/apps/gatk/4.3.0.0/gatk --java-options "-Xmx28g" MarkDuplicatesSpark \
+        -I $bam -O "${dedup_dir}/${PREFIX}_dedup.bam"
+    samtools index "${dedup_dir}/${PREFIX}_dedup.bam"
+done
+
+echo "Step 4 completed: Deduplicated BAM files are in $dedup_dir"
+
+# ===========================================
+# Step 5: Coverage Calculation
+# ===========================================
+# Calculate genome-wide coverage using Mosdepth.
+echo "Step 5: Calculating Coverage"
+
+module purge
+module load mosdepth/0.3.1
+
+coverage_dir="/scratch/work/winchell/Lanternfly/Aria/07_coverage"
+mkdir -p $coverage_dir
+
+for bam in $dedup_dir/*.bam; do
+    PREFIX=$(basename "$bam" "_dedup.bam")
+    mosdepth --threads 8 --fast-mode "${coverage_dir}/${PREFIX}" $bam
+done
+
+echo "Step 5 completed: Coverage results are in $coverage_dir"
+
+# ===========================================
+# Step 6: Variant Calling
+# ===========================================
+# Call variants using GATK HaplotypeCaller.
+echo "Step 6: Variant Calling"
+
+gvcf_dir="/scratch/work/winchell/Lanternfly/Aria/10_gvcfs"
+mkdir -p $gvcf_dir
+
+for bam in $dedup_dir/*.bam; do
+    PREFIX=$(basename "$bam" "_dedup.bam")
+    /share/apps/gatk/4.3.0.0/gatk --java-options "-Xmx24G" HaplotypeCaller \
+        -R $reference -I $bam -O "${gvcf_dir}/${PREFIX}.g.vcf.gz" -ERC GVCF
+done
+
+echo "Step 6 completed: GVCFs are in $gvcf_dir"
+
+# ===========================================
+# Step 7: Joint Genotyping
+# ===========================================
+# Combine GVCFs and perform joint genotyping.
+echo "Step 7: Joint Genotyping"
+
+combined_gvcf="/scratch/work/winchell/Lanternfly/Aria/11_joint_genotyping/combined.g.vcf.gz"
+final_vcf="/scratch/work/winchell/Lanternfly/Aria/11_joint_genotyping/joint_genotyped.vcf.gz"
+mkdir -p $(dirname $combined_gvcf)
+
+/share/apps/gatk/4.3.0.0/gatk --java-options "-Xmx24G" CombineGVCFs \
+    -R $reference -V $gvcf_dir/*.g.vcf.gz -O $combined_gvcf
+
+/share/apps/gatk/4.3.0.0/gatk --java-options "-Xmx10G" GenotypeGVCFs \
+    -R $reference -V $combined_gvcf -O $final_vcf
+
+echo "Step 7 completed: Joint genotyping results are in $final_vcf"
+
+# ===========================================
+# Step 8: SNP and Indel Extraction
+# ===========================================
+# Extract SNPs and Indels from the final VCF.
+echo "Step 8: Extracting SNPs and Indels"
+
+snps_vcf="/scratch/work/winchell/Lanternfly/Aria/11_joint_genotyping/SLF.SNPs.vcf.gz"
+indels_vcf="/scratch/work/winchell/Lanternfly/Aria/11_joint_genotyping/SLF.Indels.vcf.gz"
+
+/share/apps/gatk/4.3.0.0/gatk SelectVariants \
+    -R $reference -V $final_vcf --select-type-to-include SNP -O $snps_vcf
+
+/share/apps/gatk/4.3.0.0/gatk SelectVariants \
+    -R $reference -V $final_vcf --select-type-to-include INDEL -O $indels_vcf
+
+echo "Step 8 completed: SNPs in $snps_vcf, Indels in $indels_vcf"
+
+# ===========================================
+# Step 9: Data Export for Analysis
+# ===========================================
+# Convert variants to tables for downstream analysis.
+echo "Step 9: Converting VCFs to Tables"
+
+snps_table="${snps_vcf%.vcf.gz}.table"
+indels_table="${indels_vcf%.vcf.gz}.table"
+
+/share/apps/gatk/4.3.0.0/gatk VariantsToTable \
+    -V $snps_vcf -F CHROM -F POS -F DP -F QUAL -F MQ -F QD -F FS -F SOR -O $snps_table
+
+/share/apps/gatk/4.3.0.0/gatk VariantsToTable \
+    -V $indels_vcf -F CHROM -F POS -F DP -F QUAL -F MQ -F QD -F FS -F SOR -O $indels_table
+
+echo "Step 9 completed: Tables exported for analysis"
+
+
+# ===========================================
+# Step 10: Check all stats distrubution in R, then do the hard filtering.
+We have over 40 million SNPs, and we do very strigent filtering.
+# ===========================================
+
+# Define input and output files
+INPUT_VCF="/scratch/work/winchell/Lanternfly/Aria/11_joint_genotyping/SLF.SNPs.vcf.gz"
+REFERENCE="/scratch/fm2371/Winchell/sex/genome/SLF_Hap1.fasta"
+HARD_FILTERED_VCF="final.SLF.SNPs.hardfiltered.vcf"
+PASSED_VCF="final.SLF.SNPs.hardfiltered.passed.vcf"
+BIALLELIC_VCF="final.SLF.SNPs.hardfiltered.passed.biallelic.vcf.gz"
+STATS_BEFORE="stats_before_filtering.txt"
+STATS_AFTER="stats_after_filtering.txt"
+
+# Generate statistics before filtering
+echo "Generating statistics for the unfiltered VCF..."
+bcftools stats $INPUT_VCF > $STATS_BEFORE
+echo "Statistics before filtering saved to $STATS_BEFORE."
+
+# Apply hard filters to the SNPs
+echo "Applying hard filters to SNPs..."
+gatk VariantFiltration \
+    -V $INPUT_VCF \
+    -R $REFERENCE \
+    -filter "QUAL < 30.0" --filter-name "QUAL30" \
+    -filter "QD < 10.0" --filter-name "QD10" \
+    -filter "FS > 10.0" --filter-name "FS10" \
+    -filter "MQ < 50.0" --filter-name "MQ50" \
+    -filter "MQRankSum < -1.0" --filter-name "MQRankSum-1" \
+    -filter "MQRankSum > 1.0" --filter-name "MQRankSum1" \
+    -filter "ReadPosRankSum < -1.0" --filter-name "ReadPosRankSum-1" \
+    -filter "ReadPosRankSum > 1.0" --filter-name "ReadPosRankSum1" \
+    -filter "SOR > 2.0" --filter-name "SOR2" \
+    -O $HARD_FILTERED_VCF
+
+echo "Hard filtering completed. Filtered VCF saved to $HARD_FILTERED_VCF."
+
+# Extract PASS variants
+echo "Extracting PASS variants..."
+bcftools view -f PASS $HARD_FILTERED_VCF > $PASSED_VCF
+echo "PASS variants extracted and saved to $PASSED_VCF."
+
+# Retain only biallelic SNPs
+echo "Filtering for biallelic SNPs..."
+bcftools view -m2 -M2 -v snps $PASSED_VCF -o $BIALLELIC_VCF -Oz
+bcftools index $BIALLELIC_VCF
+echo "Biallelic SNPs retained and saved to $BIALLELIC_VCF."
+
+# Generate statistics after filtering
+echo "Generating statistics for the filtered VCF..."
+bcftools stats $BIALLELIC_VCF > $STATS_AFTER
+echo "Statistics after filtering saved to $STATS_AFTER."
+
+# Summary of SNP counts before and after filtering
+echo "Summary of SNP counts:"
+grep "number of SNPs" $STATS_BEFORE
+grep "number of SNPs" $STATS_AFTER
+
+echo "Hard filtering, biallelic SNP filtering, and statistics generation completed successfully."
+
+# ===========================================
+# Step 11: Further filtering using vcftools/bcftools
+# ===========================================
+# Before any filtering, we have:  43,855,652 SNPs after joining call.
+# After GATK stringent Hard Filtering and only keep bialleic SNPs: 26,892,855
+# minQ 30: After filtering, kept 26,892,855 out of a possible 26,892,855 Sites
+# Maf 0.05: After filtering, kept 17,315,915 out of a possible 26,892,855 Sites
+# Missing data: --max-missing 0.95: After filtering, kept 1,577,126 out of a possible 17,315,915 Sites
+#LD Prune 0.1: --m 0.1, 10kb: After filtering, kept 158,235 out of a possible 1,577,126 Sites
+
+# Load vcftools module
+module purge
+module load vcftools/intel/0.1.16
+
+# Define paths
+WORK_DIR="/scratch/work/winchell/Lanternfly/WGS/15_NoDownsample_VCF"
+INPUT_VCF="${WORK_DIR}/SLF.SNPs.passed.biallelic.vcf.gz"
+OUTPUT_DIR="${WORK_DIR}/Filtered_VCF"
+
+mkdir -p $OUTPUT_DIR
+
+# Step 1: Filter by minimum quality (minQ)
+#echo "Step 1: Filtering SNPs by minimum quality (minQ = 30)..."
+#vcftools --gzvcf $INPUT_VCF --minQ 30 --recode --recode-INFO-all --out "${OUTPUT_DIR}/Step1_minQ30"
+#zgrep -v "^#" "${OUTPUT_DIR}/Step1_minQ30.recode.vcf" | wc -l > "${OUTPUT_DIR}/Step1_minQ30.snp_count"
+#echo "SNPs retained after Step 1: $(cat ${OUTPUT_DIR}/Step1_minQ30.snp_count)"
+
+# Step 2: Filter by minimum allele frequency (MAF)
+#echo "Step 2: Filtering SNPs by minimum allele frequency (MAF = 0.05)..."
+#vcftools --vcf "${OUTPUT_DIR}/Step1_minQ30.recode.vcf" --maf 0.05 --recode --recode-INFO-all --out "${OUTPUT_DIR}/Step2_MAF0.05"
+#zgrep -v "^#" "${OUTPUT_DIR}/Step2_MAF0.05.recode.vcf" | wc -l > "${OUTPUT_DIR}/Step2_MAF0.05.snp_count"
+#echo "SNPs retained after Step 2: $(cat ${OUTPUT_DIR}/Step2_MAF0.05.snp_count)"
+
+# Step 3: Filter by maximum missing data
+echo "Step 3: Filtering SNPs by maximum missing data (max-missing = 0.9)..."
+vcftools --vcf "${OUTPUT_DIR}/Step2_MAF0.05.recode.vcf" --max-missing 0.95 --recode --recode-INFO-all --out "${OUTPUT_DIR}/Step3_maxMissing0.95"
+zgrep -v "^#" "${OUTPUT_DIR}/Step3_maxMissing0.95.recode.vcf" | wc -l > "${OUTPUT_DIR}/Step3_maxMissing0.95.snp_count"
+echo "SNPs retained after Step 3: $(cat ${OUTPUT_DIR}/Step3_maxMissing0.95.snp_count)"
+
+# Step 4: Filter by depth
+echo "Step 4: Filtering SNPs by depth (min-meanDP = 2, max-meanDP = 20, minDP = 2, maxDP = 20)..."
+vcftools --vcf "${OUTPUT_DIR}/Step3_maxMissing0.9.recode.vcf" --min-meanDP 2 --max-meanDP 20 --minDP 2 --maxDP 20 --recode --recode-INFO-all --out "${OUTPUT_DIR}/Step4_Depth"
+zgrep -v "^#" "${OUTPUT_DIR}/Step4_Depth.recode.vcf" | wc -l > "${OUTPUT_DIR}/Step4_Depth.snp_count"
+echo "SNPs retained after Step 4: $(cat ${OUTPUT_DIR}/Step4_Depth.snp_count)"
+
+vcftools --vcf "${OUTPUT_DIR}/Step3_maxMissing0.95.recode.vcf" --min-meanDP 2 --max-meanDP 20 --minDP 2 --maxDP 20 --recode --recode-INFO-all --out "${OUTPUT_DIR}/Step4_Depth"
+zgrep -v "^#" "${OUTPUT_DIR}/Step4_Depth.recode.vcf" | wc -l > "${OUTPUT_DIR}/Step4_Depth.snp_count"
+
+# Final summary
+echo "Filtering completed. SNP counts after each step:"
+echo "Step 1 (minQ30): $(cat ${OUTPUT_DIR}/Step1_minQ30.snp_count)"
+echo "Step 2 (MAF0.05): $(cat ${OUTPUT_DIR}/Step2_MAF0.05.snp_count)"
+echo "Step 3 (maxMissing0.9): $(cat ${OUTPUT_DIR}/Step3_maxMissing0.9.snp_count)"
+echo "Step 4 (Depth filtering): $(cat ${OUTPUT_DIR}/Step4_Depth.snp_count)"
+
+module load bcftools/intel/1.14
+
+# Define input and output files
+INPUT_VCF="/scratch/work/winchell/Lanternfly/Aria/12_Final_VCF/minQ30_MAF0.05_maxmissing0.9.recode.vcf"
+OUTPUT_VCF="/scratch/work/winchell/Lanternfly/Aria/12_Final_VCF/Final.maf0.05.missing0.9.ld0.1.vcf"
+
+# Prune for LD (r2 > 0.1) within 10-kb windows
+bcftools +prune -m 0.1 -w 10kb $INPUT_VCF -o $OUTPUT_VCF -O v
+
+# ===========================================
+# Step 12: subset by population
+# ===========================================
+#!/bin/bash
+
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=4
+#SBATCH --time=8:00:00
+#SBATCH --mem=16GB
+#SBATCH --job-name=HardFilter_SNPs
+#SBATCH --mail-type=BEGIN,END
+#SBATCH --mail-user=fm2371@nyu.edu
+#SBATCH --output=hard_filter_snps.out
+
+# Load the bcftools module
+module purge
+module load bcftools/intel/1.19
+
+# Define paths
+WORK_DIR="/scratch/work/winchell/Lanternfly/WGS/16_NoDownsample_VCF_Analysis"
+INPUT_VCF="${WORK_DIR}/Step4_Depth_0.95.LD0.1.vcf"
+USA_VCF="${WORK_DIR}/USA_samples.vcf"
+SHANGHAI_VCF="${WORK_DIR}/Shanghai_samples.vcf"
+
+# Subset USA samples
+echo "Subsetting USA samples..."
+bcftools view \
+    -S <(bcftools query -l $INPUT_VCF | grep '^NYULF_') \
+    -o $USA_VCF $INPUT_VCF
+
+# Subset Shanghai samples
+echo "Subsetting Shanghai samples..."
+bcftools view \
+    -S <(bcftools query -l $INPUT_VCF | grep '^AZ') \
+    -o $SHANGHAI_VCF $INPUT_VCF
+
+# Index the resulting VCFs
+echo "Indexing USA samples VCF..."
+bcftools index $USA_VCF
+
+echo "Indexing Shanghai samples VCF..."
+bcftools index $SHANGHAI_VCF
+
+echo "Subsetting and indexing completed successfully!"
+
+
+# ===========================================
+# Step 13: Genetic Distance Calculation
+# ===========================================
+
+module purge
+
+# Genetic Distance Calculation
+module load plink/1.90b6.21
+
+GENETIC_DISTANCE_DIR="${WORK_DIR}/Genetic_Distance"
+mkdir -p $GENETIC_DISTANCE_DIR
+
+calculate_distance() {
+    local vcf_file=$1
+    local prefix=$2
+    echo "Processing genetic distance for $prefix..."
+    plink --vcf $vcf_file --make-bed --out ${GENETIC_DISTANCE_DIR}/${prefix} --double-id --allow-extra-chr
+    plink --bfile ${GENETIC_DISTANCE_DIR}/${prefix} --recode tab --out ${GENETIC_DISTANCE_DIR}/${prefix} --allow-extra-chr
+    plink --file ${GENETIC_DISTANCE_DIR}/${prefix} --distance '1-ibs' square --allow-extra-chr --out ${GENETIC_DISTANCE_DIR}/${prefix}_1ibs
+    plink --file ${GENETIC_DISTANCE_DIR}/${prefix} --distance 'ibs' square --allow-extra-chr --out ${GENETIC_DISTANCE_DIR}/${prefix}_ibs
+    echo "Finished processing genetic distance for $prefix."
+}
+
+calculate_distance $USA_VCF "USA"
+calculate_distance $SHANGHAI_VCF "Shanghai"
+calculate_distance $COMBINED_VCF "Combined"
+
+module purge
+
+# ===========================================
+# Step 14:Runs of Homozygosity Detection, no sex chr
+# ===========================================
+# Initialize environment
+module purge
+
+WORK_DIR="/scratch/work/winchell/Lanternfly/WGS/00_Scripts"
+FILTERED_VCF="/scratch/work/winchell/Lanternfly/WGS/15_NoDownsample_VCF/Filtered_VCF/Just_maxMissing0.95_noSexChr.vcf"
+ROH_DIR="${WORK_DIR}/RoH_NoSexChr"
+
+# Create output directory
+mkdir -p ${ROH_DIR}
+
+# Load PLINK module
+module load plink/1.90b6.21
+
+# Define ROH parameters
+PLINK_ROH_OPTIONS="--make-bed --double-id --allow-extra-chr \
+                  --homozyg-density 50 \
+                  --homozyg-gap 1000 \
+                  --homozyg-kb 500 \
+                  --homozyg-snp 50 \
+                  --homozyg-window-het 1 \
+                  --homozyg-window-snp 50 \
+                  --homozyg-window-missing 5 \
+                  --homozyg-window-threshold 0.05"
+
+echo "Starting ROH analysis on filtered data (sex chromosome removed)..."
+plink --vcf ${FILTERED_VCF} ${PLINK_ROH_OPTIONS} --out ${ROH_DIR}/ROH_noSexChr_results
+
+# ===========================================
+# Step 15:FST Analysis
+# ===========================================
+
+module purge
+
+# Step 5: FST Analysis
+module load vcftools/intel/0.1.16
+
+FST_DIR="${WORK_DIR}/FST"
+mkdir -p ${FST_DIR}
+
+vcftools --vcf $COMBINED_VCF \
+  --weir-fst-pop $WORK_DIR/SH_population.txt \
+  --weir-fst-pop $WORK_DIR/US_population.txt \
+  --fst-window-size 10000 \
+  --out ${FST_DIR}/SH_vs_US_FST_10kb
+
+echo "FST analysis completed."
+
+module purge
+
+echo "All analyses completed successfully! Results saved in respective directories."
+
+
+# ===========================================
+# Step 16:LD decay Analysis
+# ===========================================
+
+##### Run LD Prune, using no LD prune vcf. 
+import pandas as pd
+import re
+
+# Function to process the VCF file and remove 'chr_' prefix
+def modify_vcf(input_vcf, output_vcf):
+    with open(input_vcf, 'r') as infile, open(output_vcf, 'w') as outfile:
+        for line in infile:
+            # Write header lines as-is
+            if line.startswith("#"):
+                outfile.write(line)
+            else:
+                # Split the line into columns and modify the CHROM column
+                columns = line.strip().split('\t')
+                columns[0] = re.sub(r'^chr_', '', columns[0])  # Remove 'chr_' prefix
+                outfile.write('\t'.join(columns) + '\n')
+
+# Input and output file paths
+input_vcf = "NOLD_AllSamples.vcf"
+output_vcf = "Combined_NOLD_modified.vcf"
+
+# Run the function
+modify_vcf(input_vcf, output_vcf)
+
+print(f"Modified VCF saved to: {output_vcf}")
+
+# then run pop LD decay
+Linkage disequilibrium (LD) decay[1] is the most important and most common analysis in the population resequencing[2]. Special in the self-pollinated crops, the LD decay may not only reveal much about domestication and breed history[3], but also can reveal gene flow phenomenon, selection regions[1].However, to measure the LD decay, it takes too much resources and time by using currently existent software and tools. The LD decay studies also generate extraordinarily large amounts of data to temporary storage when you using the mainstream software "Haploview"[4], the classical LD processing tools. Effective use and analysis to get the LD decay result remains a difficult task for individual researchers. Here, we introduce PopLDdecay, a simple- efficient software for LD decay analysis, which processes the Variant Call Format (VCF)[5] file to produce the LD decay statistics results and plot the LD decay graphs. PopLDdecay is designed to use compressed data files as input or output to save storage space and it facilitates faster and more computationally efficient than the currently existent softwares. This software makes the LD decay pipeline significantly
+
+Parameter description
+	Usage: PopLDdecay -InVCF  <in.vcf.gz>  -OutStat <out.stat>
+
+		-InVCF       <str>    Input SNP VCF Format
+		-InGenotype  <str>    Input SNP Genotype Format
+		-OutStat     <str>    OutPut Stat Dist ~ r^2 File
+
+		-SubPop      <str>    SubGroup SampleList of VCFFile [ALLsample]
+		-MaxDist     <int>    Max Distance (kb) between two SNP [300]
+		-MAF         <float>  Min minor allele frequency filter [0.005]
+		-Het         <float>  Max ratio of het allele filter [0.88]
+		-Miss        <float>  Max ratio of miss allele filter [0.25]
+		-EHH         <str>    To Run EHH Region decay set StartSite [NA]
+		-OutFilterSNP         OutPut the final SNP to calculate
+		-OutType     <int>    1: R^2 result 2: R^2 & D' result 3:PairWise LD Out[1]
+		                      See the Help for more OutType [1-8] details
+
+#!/bin/bash
+
+#SBATCH --job-name=ld_decay          # Job name
+#SBATCH --nodes=1                    # Number of nodes
+#SBATCH --ntasks=1                   # Number of tasks
+#SBATCH --cpus-per-task=4            # CPUs per task
+#SBATCH --mem=32G                    # Memory per node
+#SBATCH --time=2:00:00              # Time limit
+
+module load singularity/3.7.4
+
+# Run PopLDdecay for Shanghai population
+singularity exec /scratch/work/winchell/Lanternfly/WGS/00_Containers/BioinfoContainers_poplddecay.sif PopLDdecay \
+    -InVCF /scratch/work/winchell/Lanternfly/WGS/16_NoDownsample_VCF_Analysis/NO_LD_Prune/Combined_NOLD_modified.vcf \
+    -OutStat SH_Urban.stat \
+    -SubPop /scratch/work/winchell/Lanternfly/WGS/16_NoDownsample_VCF_Analysis/NO_LD_Prune/SH_Urban_SLF_ID_row.txt
+
+# Run PopLDdecay for USA population
+singularity exec /scratch/work/winchell/Lanternfly/WGS/00_Containers/BioinfoContainers_poplddecay.sif PopLDdecay \
+    -InVCF /scratch/work/winchell/Lanternfly/WGS/16_NoDownsample_VCF_Analysis/NO_LD_Prune/Combined_NOLD_modified.vcf \
+    -OutStat SH_Rural.stat \
+    -SubPop /scratch/work/winchell/Lanternfly/WGS/16_NoDownsample_VCF_Analysis/NO_LD_Prune/SH_Rural_SLF_ID_row.txt
+
+singularity exec /scratch/work/winchell/Lanternfly/WGS/00_Containers/BioinfoContainers_poplddecay.sif PopLDdecay \
+    -InVCF /scratch/work/winchell/Lanternfly/WGS/16_NoDownsample_VCF_Analysis/NO_LD_Prune/Combined_NOLD_modified.vcf \
+    -OutStat SH.stat \
+    -SubPop /scratch/work/winchell/Lanternfly/WGS/16_NoDownsample_VCF_Analysis/NO_LD_Prune/SH_SLF_ID_row.txt
+    
+singularity exec /scratch/work/winchell/Lanternfly/WGS/00_Containers/BioinfoContainers_poplddecay.sif PopLDdecay \
+    -InVCF /scratch/work/winchell/Lanternfly/WGS/16_NoDownsample_VCF_Analysis/NO_LD_Prune/Combined_NOLD_modified.vcf \
+    -OutStat USA.stat \
+    -SubPop /scratch/work/winchell/Lanternfly/WGS/16_NoDownsample_VCF_Analysis/NO_LD_Prune/USA_SLF_ID_row.txt
+
+# Next plot
+# singularity exec /scratch/work/winchell/Lanternfly/WGS/00_Containers/BioinfoContainers_poplddecay.sif perl Plot_MultiPop.pl \
+  #  -inList multi.list \
+   # -output LD_decay_comparison
+
+
+# ===========================================
+# Step 16:Admixture Analysis
+# ===========================================
+
+Admixture: 
+# Problem with use admixture: Invalid chromosome code!  Use integers.
+awk '
+BEGIN { OFS="\t" } 
+/^#/ { print; next } 
+{ 
+    gsub(/^chr_/, "", $1); 
+    print 
+}' minQ30_MAF0.05_maxmissing0.9maxDP15.recode.vcf > minQ30_MAF0.05_maxmissing0.9maxDP15.integer_chr.vcf
+
+# then use Plink to change the format
+
+module load plink2/20230417
+plink2 --vcf minQ30_MAF0.05_maxmissing0.9maxDP15.integer_chr.vcf --make-bed --out For_admixture --allow-extra-chr --double-id
+
+# Then run admixture 
+module load admixture/1.3.0
+
+# Path
+DATA_PATH="/scratch/work/winchell/Lanternfly/WGS/13_Filtered_VCF/Genetic_Distance/For_admixture.bed"
+
+# Output directory
+OUTPUT_DIR="/scratch/work/winchell/Lanternfly/WGS/13_Filtered_VCF/Genetic_Distance/Admixture"
+mkdir -p ${OUTPUT_DIR}
+
+# Loop over K values from 1 to 10
+for K in {1..10}; do
+    echo "Running ADMIXTURE for K=$K..."
+    admixture --cv -j8 $DATA_PATH $K | tee ${OUTPUT_DIR}/log${K}.out
+done
+
+# Extract and display CV errors for each K
+echo "Cross-validation errors:"
+grep -h CV ${OUTPUT_DIR}/log*.out
+
+
+# ===========================================
+# Step 17:SNP tree
+# ===========================================
+
+### SNP tree
+#Get vcf that only contains GT info: 
+module load bcftools/intel/1.19
+bcftools annotate -x INFO,^FORMAT/GT Final.SLF.vcf -o SNPTree.vcf
+
+#Convert it to phy with vcf2phily, If for some reason you don't want to have IUPAC ambiguities representing heterozygous genotypes: -r
+module load python/intel/3.8.6
+python vcf2phylip.py --input SNPTree.vcf --resolve-IUPAC
+python vcf2phylip.py --input SNPTree_USA.vcf --resolve-IUPAC
+
+#!/bin/bash
+
+#SBATCH --job-name=detect_RoH          # Job name
+#SBATCH --nodes=1                      # Number of nodes
+#SBATCH --cpus-per-task=8           # Number of CPUs
+#SBATCH --mem=32GB                     # Memory allocation
+#SBATCH --time=12:00:00                # Time limit
+#SBATCH --mail-type=BEGIN,END,FAIL     # Notification settings
+##SBATCH --mail-user=fm2371@nyu.edu    # Email for notifications
+
+# Load the required module
+module purge
+
+module load iqtree/1.6.12
+
+# Step 1: find the best model
+#iqtree -s /scratch/work/winchell/Lanternfly/WGS/16_NoDownsample_VCF_Analysis/Final.SNPTree.varsites.phy -nt 8 -pre Test.SNPTree -m MFP+ASC
+iqtree -s /scratch/work/winchell/Lanternfly/WGS/16_NoDownsample_VCF_Analysis/USA_SNPTree.varsites.phy -nt 8 -pre USA_SNPTree -m MFP+ASC
+SNPTree_USA.min4.phy
+
+# Step 2: run the best model and do 1000 bootstrap	
+iqtree -s /scratch/work/winchell/Lanternfly/WGS/16_NoDownsample_VCF_Analysis/Final.SNPTree.varsites.phy -B 1000 -m GTR+F+ASC+G4 -st DNA -nt 8 -pre /scratch/work/winchell/Lanternfly/WGS/16_NoDownsample_VCF_Analysis/Final.SNPTree
+
+# ===========================================
+# Step 18:SNP annotation
+# ===========================================
+
+#!/bin/bash
+#
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=12
+#SBATCH --time=01:00:00
+#SBATCH --mem=8GB
+#SBATCH --job-name=SNPeff_SLFB
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=fm2371@nyu.edu
+
+# Load the SnpEff module
+module load snpeff/4.3t || { echo "Error: Failed to load snpeff module"; exit 1; }
+
+# Working directory and reference directory paths
+WORK_DIR="/scratch/work/winchell/Lanternfly/WGS/Ref_genome/snpeff"
+DATA_DIR="$WORK_DIR/data"
+DATABASE_NAME="SLF_Hap1"
+GENOME_FILE="/scratch/work/winchell/Lanternfly/WGS/Ref_genome/SLF_Hap1.fasta"
+GFF_FILE="/scratch/work/winchell/Lanternfly/WGS/Ref_genome/snpeff/SLF_Hap1.gff3"
+PROTEIN_FILE="/scratch/work/winchell/Lanternfly/Genome2/Annotation/Hap1/Functional/Hap1.faa"
+
+# Create the data directory and copy the reference files into it
+echo "Creating directories and copying reference files..."
+mkdir -p "$DATA_DIR/$DATABASE_NAME" || { echo "Error: Failed to create database directory"; exit 1; }
+mkdir -p "$DATA_DIR/genomes" || { echo "Error: Failed to create genomes directory"; exit 1; }
+
+echo "Copying genome file..."
+cp "$GENOME_FILE" "$DATA_DIR/genomes/$DATABASE_NAME.fa" || { echo "Error: Failed to copy genome file"; exit 1; }
+echo "Copying GFF file..."
+cp "$GFF_FILE" "$DATA_DIR/$DATABASE_NAME/genes.gff" || { echo "Error: Failed to copy GFF file"; exit 1; }
+echo "Copying protein file..."
+cp "$PROTEIN_FILE" "$DATA_DIR/$DATABASE_NAME/protein.fa" || { echo "Error: Failed to copy protein file"; exit 1; }
+
+# Update the snpEff.config file
+CONFIG_FILE="$WORK_DIR/snpEff.config"
+echo "Updating snpEff.config..."
+{
+  echo "# Genome information for $DATABASE_NAME"
+  echo "$DATABASE_NAME.genome : Spotted_Lanternfly"
+} >> "$CONFIG_FILE" || { echo "Error: Failed to update snpEff.config"; exit 1; }
+
+# Run SnpEff build
+echo "Running SnpEff build..."
+java -Xmx8g -jar /share/apps/snpeff/4.3t/snpEff.jar build -gff3 -v $DATABASE_NAME > build.log 2>&1
+if [ $? -ne 0 ]; then
+  echo "Error: SnpEff build failed. Check the log file build.log for details."
+  exit 1
+fi
+
+echo "SnpEff database build completed successfully."
+
+
+#!/bin/bash
+#
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=4
+#SBATCH --time=48:00:00
+#SBATCH --mem=36GB
+#SBATCH --job-name=annotate_vcf_snpeff
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=fm2371@nyu.edu
+
+# Load necessary modules
+module load snpeff/4.3t || { echo "Error: Failed to load SnpEff module"; exit 1; }
+module load samtools/intel/1.20 || { echo "Error: Failed to load Samtools module"; exit 1; }
+
+# Define directories and file paths
+WORK_DIR="/scratch/work/winchell/Lanternfly/WGS/Ref_genome/snpeff"
+SNPEFF_JAR="/share/apps/snpeff/4.3t/snpEff.jar"
+DATABASE_NAME="SLF_Hap1"
+
+# Input VCF files
+FILTERED_VCF="/scratch/work/winchell/Lanternfly/WGS/16_NoDownsample_VCF_Analysis/Final.SLF.vcf"
+UNFILTERED_VCF="/scratch/work/winchell/Lanternfly/WGS/15_NoDownsample_VCF/Filtered_VCF/Step1_minQ30.recode.vcf"
+
+# Output files
+FILTERED_OUTPUT_VCF="${FILTERED_VCF%.vcf}_annotated.vcf"
+UNFILTERED_OUTPUT_VCF="${UNFILTERED_VCF%.vcf}_annotated.vcf"
+
+# Move to the working directory
+cd "$WORK_DIR" || { echo "Error: Failed to change directory to $WORK_DIR"; exit 1; }
+
+# Annotate the filtered VCF
+echo "Annotating filtered VCF: $FILTERED_VCF..."
+java -Xmx8g -jar "$SNPEFF_JAR" -v "$DATABASE_NAME" "$FILTERED_VCF" > "$FILTERED_OUTPUT_VCF" 2> annotate_filtered.log
+if [ $? -ne 0 ]; then
+  echo "Error: SnpEff annotation for filtered VCF failed. Check annotate_filtered.log for details."
+  exit 1
+fi
+
+# Annotate the unfiltered VCF
+echo "Annotating unfiltered VCF: $UNFILTERED_VCF..."
+java -Xmx8g -jar "$SNPEFF_JAR" -v "$DATABASE_NAME" "$UNFILTERED_VCF" > "$UNFILTERED_OUTPUT_VCF" 2> annotate_unfiltered.log
+if [ $? -ne 0 ]; then
+  echo "Error: SnpEff annotation for unfiltered VCF failed. Check annotate_unfiltered.log for details."
+  exit 1
+fi
+
+# Compress and index the annotated VCFs
+echo "Compressing and indexing annotated VCFs..."
+bgzip -f "$FILTERED_OUTPUT_VCF" || { echo "Error: Failed to compress the filtered annotated VCF"; exit 1; }
+tabix -p vcf "${FILTERED_OUTPUT_VCF}.gz" || { echo "Error: Failed to index the filtered annotated VCF"; exit 1; }
+
+bgzip -f "$UNFILTERED_OUTPUT_VCF" || { echo "Error: Failed to compress the unfiltered annotated VCF"; exit 1; }
+tabix -p vcf "${UNFILTERED_OUTPUT_VCF}.gz" || { echo "Error: Failed to index the unfiltered annotated VCF"; exit 1; }
+
+# Confirm completion
+echo "SnpEff annotation and indexing completed successfully for both VCFs."
+
+
+# Format change in Plink, raw file format needed for GEA RDA.
+[fm2371@log-3 Final_annotated_VCF]$ plink --recode A --double-id --allow-extra-chr --vcf Final.SLF_annotated.vcf
+PLINK v1.90b6.21 64-bit (19 Oct 2020)          www.cog-genomics.org/plink/1.9/
+(C) 2005-2020 Shaun Purcell, Christopher Chang   GNU General Public License v3
+Logging to plink.log.
+Options in effect:
+  --allow-extra-chr
+  --double-id
+  --recode A
+  --vcf Final.SLF_annotated.vcf
+  
+  [fm2371@log-3 Final_annotated_VCF]$ awk 'BEGIN { FS="\t"; OFS="\t" }
+     /^#/ { next }  # skip header lines starting with "#"
+     {
+       ann = "NA";
+       n = split($8, a, ";"); 
+       for(i = 1; i <= n; i++) {
+         if(a[i] ~ /^ANN=/) {
+           ann = a[i];
+           sub(/^ANN=/, "", ann);
+           break;
+         }
+       }
+       print $1, $2, $3, $4, $5, $6, $7, ann
+     }' Final.SLF_annotated.uniqueID.vcf > extracted_info.tsv
+[fm2371@log-3 Final_annotated_VCF]$ awk 'BEGIN { FS="\t"; OFS="," }
+     /^#/ { next }
+     {
+       ann = "NA";
+       n = split($8, a, ";"); 
+       for(i = 1; i <= n; i++) {
+         if(a[i] ~ /^ANN=/) {
+           ann = a[i];
+           sub(/^ANN=/, "", ann);
+           break;
+         }
+       }
+       print $1, $2, $3, $4, $5, $6, $7, ann
+     }' Final.SLF_annotated.uniqueID.vcf > extracted_info.csv
+
+
+# ===========================================
+# Step 20:Prepare GEA/RDA input files
+# ===========================================
+    
+#!/bin/bash
+
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=4
+#SBATCH --time=12:00:00
+#SBATCH --mem=32GB
+#SBATCH --job-name=plink_pipeline
+#SBATCH --mail-type=BEGIN,END
+#SBATCH --mail-user=fm2371@nyu.edu
+#SBATCH --output=plink_pipeline.out
+
+# Load necessary modules
+module purge
+module load bcftools/1.19
+module load plink/1.9
+
+# Define working directories
+WORK_DIR="/scratch/work/winchell/Lanternfly/WGS/16_NoDownsample_VCF_Analysis/Final_annotated_VCF"
+OUT_DIR="${WORK_DIR}/Separated"
+
+# Define input files
+FULL_VCF="${WORK_DIR}/Final.SLF_annotated_with_ID.vcf.gz"
+SH_VCF="${OUT_DIR}/SH_final_annotated.vcf.gz"
+USA_VCF="${OUT_DIR}/USA_final_annotated.vcf.gz"
+
+# Define PLINK output files
+SH_PLINK_PREFIX="${OUT_DIR}/SH_final_annotated"
+USA_PLINK_PREFIX="${OUT_DIR}/USA_final_annotated"
+MERGED_PLINK_PREFIX="${OUT_DIR}/Merged_final_annotated"
+
+# Define sample lists
+SH_SAMPLE_LIST="${OUT_DIR}/SH_population.txt"
+USA_SAMPLE_LIST="${OUT_DIR}/US_population.txt"
+
+# Create output directory if not exists
+mkdir -p $OUT_DIR
+
+echo "===== STEP 1: Extracting Shanghai & USA samples from Full VCF ====="
+bcftools view -S $SH_SAMPLE_LIST -Oz -o $SH_VCF $FULL_VCF
+bcftools view -S $USA_SAMPLE_LIST -Oz -o $USA_VCF $FULL_VCF
+
+# Index the VCF files
+echo "===== STEP 2: Indexing VCF files ====="
+bcftools index $SH_VCF
+bcftools index $USA_VCF
+
+# Convert to PLINK binary format
+echo "===== STEP 3: Converting VCF to PLINK format ====="
+plink --vcf $SH_VCF --make-bed --out $SH_PLINK_PREFIX --allow-extra-chr --double-id
+plink --vcf $USA_VCF --make-bed --out $USA_PLINK_PREFIX --allow-extra-chr --double-id
+
+# Convert PLINK binary to raw format
+echo "===== STEP 4: Converting PLINK binary to RAW format ====="
+plink --bfile $SH_PLINK_PREFIX --recode A --out "${SH_PLINK_PREFIX}_raw" --allow-extra-chr
+plink --bfile $USA_PLINK_PREFIX --recode A --out "${USA_PLINK_PREFIX}_raw" --allow-extra-chr
+
+# Merge SH and USA PLINK datasets
+echo "===== STEP 5: Merging Shanghai & USA PLINK datasets ====="
+plink --bfile $SH_PLINK_PREFIX --bmerge ${USA_PLINK_PREFIX}.bed ${USA_PLINK_PREFIX}.bim ${USA_PLINK_PREFIX}.fam --make-bed --out $MERGED_PLINK_PREFIX --allow-extra-chr
+
+# Convert merged dataset to raw format
+echo "===== STEP 6: Converting Merged dataset to RAW format ====="
+plink --bfile $MERGED_PLINK_PREFIX --recode A --out "${MERGED_PLINK_PREFIX}_raw" --allow-extra-chr

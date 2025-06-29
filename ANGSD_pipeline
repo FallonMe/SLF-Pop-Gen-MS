@@ -1,0 +1,278 @@
+---
+title: "Spotted Lanternfly Whole-Genome Analysis Pipeline"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+# Introduction
+
+This document provides a step-by-step guide for processing low-coverage whole-genome sequencing data from the spotted lanternfly (_Lycorma delicatula_). The pipeline involves SNP calling, linkage disequilibrium (LD) pruning, PCA analysis, demographic modeling, and heterozygosity estimation.
+
+---
+
+# Step 1: SNP Calling using ANGSD
+
+```bash
+#!/bin/bash -e
+
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=16
+#SBATCH --time=128:00:00
+#SBATCH --mem=64GB
+#SBATCH --job-name=angsd_SNP_calling
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=fm2371@nyu.edu
+#SBATCH --output=slurm_%j.out
+
+# Load necessary modules
+module purge
+module load angsd/intel/0.933 gsl/intel/2.6
+
+# Define paths
+BAMS_DIR="/scratch/work/winchell/Lanternfly/WGS/06_dedup"
+BAM_LIST="/scratch/work/winchell/Lanternfly/WGS/ANGSD/bam_list.txt"
+OUTPUT="/scratch/work/winchell/Lanternfly/WGS/ANGSD"
+REF="/scratch/work/winchell/Lanternfly/WGS/Ref_genome/SLF_Hap1.fasta"
+
+# Generate bam_list.txt
+ls $BAMS_DIR/*.bam | sort -V > $BAM_LIST
+
+# Run ANGSD for SNP calling
+
+# Paths
+BAMS_DIR="/scratch/work/winchell/Lanternfly/WGS/06_dedup"
+BAM_LIST="/scratch/work/winchell/Lanternfly/WGS/ANGSD/bam_list.txt"
+OUTPUT="/scratch/work/winchell/Lanternfly/WGS/ANGSD/"
+REF="/scratch/work/winchell/Lanternfly/WGS/Ref_genome/SLF_Hap1.fasta"
+
+# Create bam_list.txt
+#mkdir -p "$(dirname $BAM_LIST)"
+#ls $BAMS_DIR/*.bam | sort -V > $BAM_LIST
+
+# Run ANGSD
+angsd -GL 2 \
+      -doGlf 2 \
+      -doDepth 1 \
+      -doCounts 1 \
+      -doMajorMinor 1 \
+      -doMaf 2 \
+      -minMaf 0.05 \
+      -SNP_pval 1e-6 \
+      -uniqueOnly 1 \
+      -minMapQ 30 \
+      -minQ 20 \
+      -skipTriallelic 1 \
+      -nThreads 16 \
+      -minInd 112 \
+      -bam $BAM_LIST \
+      -remove_bads 1 \
+      -trim 0 -C 50 -baq 1
+      -only_proper_pairs 1 \
+      -setMinDepth 5 -setMaxDepth 30 \
+      -ref $REF  \
+      -out NEW_minInd112
+
+-GL 2: Use GATK genotype likelihood model.
+-doGlf 2: Output genotype likelihoods in Beagle format (suitable for downstream tools like PCAngsd).
+-doDepth 1: Calculate depth of coverage at each site.
+-doCounts 1: Count the number of A, C, G, and T alleles.
+-doMajorMinor 1: Infer the major and minor alleles based on genotype likelihoods.
+-doMaf 2: Calculate minor allele frequency (MAF) using fixed major and inferred minor alleles.
+-minMaf 0.05: Remove sites with MAF < 5%.
+-SNP_pval 1e-6: Filter out SNPs with p-value > 1e-6.
+-uniqueOnly 1: Use only uniquely mapped reads.
+-minMapQ 30: Discard reads with mapping quality below 30.
+-minQ 20: Discard bases with quality scores below 20.
+-skipTriallelic 1: Skip triallelic sites.
+-nThreads 16: Use 16 CPU threads for faster computation.
+-minInd 112: Require at least 112 individuals to have data at a site.(more like max missing in vcftools, 112 out of 118 in our dataset means we only allow 5% missingness data)
+-bam [bam_list.txt]: List of BAM files used as input.
+-remove_bads 1: -baq 1 computes base alignment quality as explained here (BAQ) used to rule out false SNPs close to INDELS.
+-only_proper_pairs 1: 
+-C 50 reduces the effect of reads with excessive mismatches
+-out angsd_gl: Prefix for output files.
+
+Step 2: Linkage Disequilibrium Pruning with ngsLD
+
+ Load necessary modules
+module purge
+module load angsd/intel/0.933
+module load gsl/intel/2.6
+
+# Set working directory
+WORK_DIR="/scratch/work/winchell/Lanternfly/WGS/ANGSD"
+OUTPUT_DIR="${WORK_DIR}/ngsLD"
+#mkdir -p $OUTPUT_DIR
+
+# Define input files
+GENO_FILE="${WORK_DIR}/angsd_minInd112.beagle.gz"
+MAFS_FILE="${WORK_DIR}/angsd_minInd112.mafs.gz"
+POS_FILE="${WORK_DIR}/angsd_minInd112.pos"
+N_IND=118  # Number of individuals
+
+# Step 1.1: Count the number of sites
+echo "Counting the number of sites in MAF file..."
+N_SITES=$(zcat $MAFS_FILE | tail -n +2 | wc -l)
+echo "Number of sites: $N_SITES"
+
+# Step 1.2: Generate POS_FILE
+echo "Generating position file..."
+zcat $MAFS_FILE | tail -n +2 | cut -f 1,2 > $POS_FILE
+echo "Position file generated: $POS_FILE"
+
+# Step 2: Run ngsLD within Singularity
+echo "Running ngsLD..."
+/scratch/work/public/singularity/run-ngs-tools-1.8.5.bash bash -c "
+/home/fm2371/bin/ngsLD \
+  --geno $GENO_FILE \
+  --probs \
+  --n_ind $N_IND \
+  --n_sites $N_SITES \
+  --pos $POS_FILE \
+  --min_maf 0.05 \
+  --max_kb_dist 10 \
+  --n_threads 16 \
+  --out ${OUTPUT_DIR}/LD_output_10kb.txt
+"
+
+echo "ngsLD analysis completed successfully."
+
+--geno FILE: input file with genotypes, genotype likelihoods or genotype posterior probabilities.
+--probs: is the input genotype probabilities (likelihoods or posteriors)?
+--log_scale: is the input in log-scale?
+--n_ind INT: sample size (number of individuals).
+--n_sites INT: total number of sites.
+--pos(H) FILE: input file with site coordinates (one per line), where the 1st column stands for the chromosome/contig and the 2nd for the position (bp); remaining columns will be ignored but included in output; --posH assumes there is a header.
+--max_kb_dist DOUBLE: maximum distance between SNPs (in Kb) to calculate LD.
+
+Step 3: PCA Analysis with PCAngsd
+#!/bin/bash -e
+
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=4
+#SBATCH --time=48:00:00
+#SBATCH --mem=24GB
+#SBATCH --job-name=PCAngsd
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=fm2371@nyu.edu
+#SBATCH --output=slurm_%j.out
+
+# Define paths
+GL_BEAGLE="/scratch/work/winchell/Lanternfly/WGS/ANGSD/angsd_SNP.beagle.gz"
+PCANGSD_CONTAINER="/scratch/work/winchell/Lanternfly/WGS/ANGSD/pcangsd_latest.sif"
+OUTPUT_PREFIX="/scratch/work/winchell/Lanternfly/WGS/ANGSD/PCA_output"
+
+# Run PCAngsd
+singularity exec $PCANGSD_CONTAINER pcangsd -beagle $GL_BEAGLE \
+    -o $OUTPUT_PREFIX -threads 4
+
+Step 4: Genome-wide Heterozygosity Estimation with ANGSD
+# Paths
+BAM_LIST="/scratch/work/winchell/Lanternfly/WGS/ANGSD/bam_list.txt"
+REF="/scratch/work/winchell/Lanternfly/WGS/Ref_genome/SLF_Hap1.fasta"
+OUTPUT_DIR="/scratch/work/winchell/Lanternfly/WGS/ANGSD/SFS"
+#mkdir -p $OUTPUT_DIR
+
+# Get the BAM file for the current array job
+BAM=$(sed -n "${SLURM_ARRAY_TASK_ID}p" $BAM_LIST)
+
+# Ensure the BAM file exists
+if [[ ! -f "$BAM" ]]; then
+    echo "Error: BAM file $BAM not found. Exiting."
+    exit 1
+fi
+
+# Define output prefix
+OUT_PREFIX=$(basename $BAM .bam)
+
+# Step 1: Run ANGSD to calculate SAF
+echo "Running ANGSD for sample ${OUT_PREFIX}..."
+angsd -i $BAM \
+ -C 50 \
+ -ref $REF \
+ -anc $REF \
+ -dosaf 1 \
+ -fold 1 \
+ -GL 1 \
+ -nThreads 24 \
+ -minmapq 30 \
+ -minQ 20 \
+ -uniqueOnly 1 \
+ -remove_bads 1 \
+ -only_proper_pairs 1 \
+ -out ${OUTPUT_DIR}/${OUT_PREFIX}
+
+# Check if SAF file is generated
+if [[ -f "${OUTPUT_DIR}/${OUT_PREFIX}.saf.idx" ]]; then
+    echo "SAF file generated successfully for ${OUT_PREFIX}."
+else
+    echo "Error: SAF file not generated for ${OUT_PREFIX}. Exiting."
+    exit 1
+fi
+
+# Step 2: Calculate heterozygosity using realSFS
+echo "Calculating heterozygosity for ${OUT_PREFIX}..."
+/scratch/work/public/singularity/run-angsd-0.940.bash realSFS ${OUTPUT_DIR}/${OUT_PREFIX}.saf.idx > ${OUTPUT_DIR}/${OUT_PREFIX}_est.ml
+
+# Check if heterozygosity estimation file is generated
+if [[ -f "${OUTPUT_DIR}/${OUT_PREFIX}_est.ml" ]]; then
+    echo "Heterozygosity estimation completed for ${OUT_PREFIX}."
+else
+    echo "Error: Heterozygosity estimation failed for ${OUT_PREFIX}. Exiting."
+    exit 1
+fi
+
+
+# In R: Calculate and output heterozygosity
+# List all .est.ml files in the directory
+file_list <- list.files(input_dir, pattern = "_est\\.ml$", full.names = TRUE)
+
+# Iterate through each file, calculate heterozygosity, and save results
+for (file in file_list) {
+  # Read the content of the file
+  a <- scan(file, quiet = TRUE)
+  
+  # Calculate heterozygosity
+  heterozygosity <- a[2] / sum(a)
+  
+  # Create output file name
+  output_file <- file.path(output_dir, paste0(basename(file), "_heterozygosity.txt"))
+  
+  # Write the result to the output file
+  write(heterozygosity, file = output_file)
+  
+  # Print status
+  cat("Processed:", basename(file), "->", basename(output_file), "\n")
+}
+
+
+# List all heterozygosity txt files
+file_list <- list.files(input_dir, pattern = "_heterozygosity\\.txt$", full.names = TRUE)
+
+# Initialize a data frame to store the results
+results <- data.frame(SampleID = character(), Heterozygosity = numeric(), stringsAsFactors = FALSE)
+
+# Iterate through each file and extract heterozygosity
+for (file in file_list) {
+  # Extract the sample ID from the file name
+  sample_id <- gsub("_est\\.ml_heterozygosity\\.txt$", "", basename(file))
+  
+  # Read the heterozygosity value
+  heterozygosity <- as.numeric(readLines(file, warn = FALSE))
+  
+  # Append to the results data frame
+  results <- rbind(results, data.frame(SampleID = sample_id, Heterozygosity = heterozygosity))
+}
+
+# Save the results to a single output file
+write.table(results, file = output_file, sep = "\t", row.names = FALSE, quote = FALSE)
+
+# Print status
+cat("Combined heterozygosity values saved to:", output_file, "\n")
+
