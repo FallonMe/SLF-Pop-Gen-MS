@@ -9,16 +9,7 @@ Construction of the Site Frequency Spectrum (SFS)
 Eight alternative demographic scenarios
 Visualization of demographic history and effective population sizes
 
-3. SLF_R_scripts/
-   
-This script will contain all R scripts used for:
-Genetic diversity statistics (ROH,heterozygosity etc.)
-Population structure (PCA, Admixture, sNMF)
-Isolation by Distance / Environment (IBD, IBE)
-Genotype-environment association (RDA)
-Selection scan integration and GO term enrichment (pcadapt etc.)
-
-5. SLF_Analysis_Pipeline_HPC/
+2. SLF_Analysis_Pipeline_HPC/
    
 High-performance computing (HPC) shell scripts for preprocessing and analysis of whole-genome data using tools available on NYU’s Greene HPC cluster.
 These include pipelines for:
@@ -30,13 +21,13 @@ Mitochondrial genome mapping: bwa mem, samtools, bcftools, and custom consensus 
 Post-processing: vcftools, bcftools, plink, and others
 Refer to SLF_GATK_HPC_Pipeline_Final/ and ANGSD_pipeline/ for complete example job scripts.
 
-7. ANGSD_pipeline/
+3. ANGSD_pipeline/
    
 Contains scripts and parameter files used with ANGSD for:
 Estimating genome-wide diversity
 Population structure and genetic distance.
 
-9. Mt_DNA_Phylogeography_Pipeline/
+4. Mt_DNA_Phylogeography_Pipeline/
     
 Complete pipeline for mitogenomic haplotype analysis:
 Consensus mitogenome generation
@@ -45,8 +36,23 @@ Maximum likelihood phylogenetic reconstruction with IQ-TREE
 Visualization using ggtree, pegas, and lineage assignments
 Includes scripts for integrating your samples with published mitogenomes (Du et al. 2021)
 
-Metadata Branch
+Metadata Branch/
+
 Metadata for 118 SLF samples and Environmental Data:
 Contains metadata files for the 98 spotted lanternfly samples used in the study, along with all associated environmental data. This includes collection information, GPS coordinates, accession number and Bio Project Number for each spotted lanternfly raw reads on NCBI, and environmental variables used in the analyses.
+
+SLF_R_scripts Branch/
+   
+This script will contain all R scripts used for:
+Genetic diversity statistics (ROH,heterozygosity etc.)
+Population structure (PCA, Admixture, sNMF)
+Isolation by Distance / Environment (IBD, IBE)
+Genotype-environment association (RDA)
+Selection scan integration and GO term enrichment (pcadapt etc.)
+
+Data Accessibility/
+
+The raw whole genome sequencing data for 98 adult Spotted Lanternflies collected in USA, generated using the Illumina Novaseq 6000 platform, are publicly accessible in the NCBI Sequence Read Archive (SRA) under the project code PRJNA1136004. The 20 adult Spotted Lanternflies collected in Shanghai, China generated using the NovaSeq X Plus platform, are publicly accessible in the NCBI Sequence Read Archive (SRA) under the project code PRJNA1258978. 
+
 
 For any questions or issues related to this repository, please contact fm2371@nyu.edu.
