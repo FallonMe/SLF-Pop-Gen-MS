@@ -1,18 +1,47 @@
+This repository contains all scripts, pipelines, and metadata used in our study, “Cities as evolutionary incubators for the global spread of the spotted lanternfly”. This study investigates the role of urbanization in shaping the genetic diversity, population structure, demographic history, and local adaptation of the invasive spotted lanternfly (Lycorma delicatula).
 
-This repository contains the scripts, data, and analysis pipeline used in our study on Urban Corridors of Invasion: Genomic Insights into the Spotted Lanternfly’s Demographic History and Population Structure. The study investigates genetic diversity, population structure, and demographic history to understand the invasion dynamics of the spotted lanternfly.
+We integrate whole genome resequencing, mitochondrial phylogeography, and eco-evolutionary modeling to dissect how cities facilitate rapid evolution and global biological invasions.
 
-Main Branch
-1. Momi2 with mutation rate.ipynb: 
-Jupyter notebook containing the momi2 analysis, including the mutation rate calculations used for inferring the demographic history of the spotted lanternfly populations.
-2. Momi2 with mutation rate.md: 
-A markdown version of the Momi2 notebook, providing a text-based overview of the analyses conducted in the Jupyter notebook.
-3. SLF R code Final.V01.Rmd: 
-R Markdown script containing the all R code used for genetic diversity, population structure, and isolation by distance/environment analyses.
-4. SLF_Analysis_Pipeline_HPC: 
-High-performance computing (HPC) pipeline scripts used for processing genomic data, including sequence alignment, variant calling, filtering steps and other analysis we performed using HPC service provided by New York University.
+1. Momi2_models.ipynb
+Contains all demographic inference analyses performed with momi2, including:
+Construction of the Site Frequency Spectrum (SFS)
+Eight alternative demographic scenarios
+Visualization of demographic history and effective population sizes
+
+2. SLF_R_scripts/
+This script will contain all R scripts used for:
+Genetic diversity statistics (π, Ho, Tajima’s D, ROH, etc.)
+Population structure (PCA, Admixture, sNMF)
+Isolation by Distance / Environment (IBD, IBE)
+Genotype-environment association (RDA, pcadapt)
+Selection scan integration and GO term enrichment
+
+3. SLF_Analysis_Pipeline_HPC/
+High-performance computing (HPC) shell scripts for preprocessing and analysis of whole-genome data using tools available on NYU’s Greene HPC cluster.
+These include pipelines for:
+Quality control: FastQC
+Read alignment: BWA-MEM
+Mark duplicates: Picard
+Variant calling and filtering: GATK (HaplotypeCaller, GenotypeGVCFs, hard-filtering)
+Mitochondrial genome mapping: bwa mem, samtools, bcftools, and custom consensus scripts
+Post-processing: vcftools, bcftools, plink, and others
+Refer to SLF_GATK_HPC_Pipeline_Final/ and ANGSD_pipeline/ for complete example job scripts.
+
+4. ANGSD_pipeline/
+Contains scripts and parameter files used with ANGSD for:
+Estimating genome-wide diversity
+Population structure and genetic distance.
+
+5. Mt_DNA_Phylogeography_Pipeline/
+Complete pipeline for mitogenomic haplotype analysis:
+Consensus mitogenome generation
+Multiple sequence alignment using MAFFT
+Maximum likelihood phylogenetic reconstruction with IQ-TREE
+Visualization using ggtree, pegas, and lineage assignments
+Includes scripts for integrating your samples with published mitogenomes (Du et al. 2021)
 
 Metadata Branch
-Metadata for 98 SLF and Environmental Data:
+Metadata for 118 SLF samples and Environmental Data:
 Contains metadata files for the 98 spotted lanternfly samples used in the study, along with all associated environmental data. This includes collection information, GPS coordinates, accession number and Bio Project Number for each spotted lanternfly raw reads on NCBI, and environmental variables used in the analyses.
 
 For any questions or issues related to this repository, please contact fm2371@nyu.edu.
