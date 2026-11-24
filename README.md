@@ -1,57 +1,58 @@
-This repository contains all scripts, pipelines, and metadata used in our study, “Cities as evolutionary incubators for the global spread of the spotted lanternfly”. This study investigates the role of urbanization in shaping the genetic diversity, population structure, demographic history, and local adaptation of the invasive spotted lanternfly (Lycorma delicatula).
+# Population genomics of spotted lanternfly invasion and urbanization
 
-We integrate whole genome resequencing, mitochondrial phylogeography, and eco-evolutionary modeling to dissect how cities facilitate rapid evolution and global biological invasions.
+Analysis code and metadata accompanying:
 
-1. Momi2_models.ipynb, momi2_all_model.py
-Contains all demographic inference analyses performed with momi2, including:
-Construction of the Site Frequency Spectrum (SFS)
-Eight alternative demographic scenarios
-Visualization of demographic history and effective population sizes
+**Meng, F., Snead, A. A., Zhang, A. Y., Munshi-South, J., & Winchell, K. M. (2026). Cities as evolutionary incubators for the global spread of the spotted lanternfly.** *Proceedings of the Royal Society B*, 293, 20252292. [Read the paper](https://doi.org/10.1098/rspb.2025.2292).
 
-2. SLF_Analysis_Pipeline_HPC/
-   
-High-performance computing (HPC) shell scripts for preprocessing and analysis of whole-genome data using tools available on NYU’s Greene HPC cluster.
-These include pipelines for:
-Quality control: FastQC
-Read alignment: BWA-MEM
-Mark duplicates: Picard
-Variant calling and filtering: GATK (HaplotypeCaller, GenotypeGVCFs, hard-filtering)
-Mitochondrial genome mapping: bwa mem, samtools, bcftools, and custom consensus scripts
-Post-processing: vcftools, bcftools, plink, and others
-Refer to SLF_GATK_HPC_Pipeline_Final/ and ANGSD_pipeline/ for complete example job scripts.
+This study examines genetic diversity, population structure, demographic history, and candidate genomic responses to environmental variation in the spotted lanternfly (*Lycorma delicatula*) across native Shanghai and introduced U.S. populations.
 
-3. ANGSD_pipeline/
-   
-Contains scripts and parameter files used with ANGSD for:
-Estimating genome-wide diversity
-Population structure and genetic distance.
+## Start here
 
-4. Mt_DNA_Phylogeography_Pipeline/
-    
-Complete pipeline for mitogenomic haplotype analysis:
-Consensus mitogenome generation
-Multiple sequence alignment using MAFFT
-Maximum likelihood phylogenetic reconstruction with IQ-TREE
-Visualization using ggtree, pegas, and lineage assignments
-Includes scripts for integrating our samples with published mitogenomes (Du et al. 2021)
+- **Understand the analyses:** read the paper and the [analysis guide](REPRODUCIBILITY.md).
+- **Find the R code:** browse [R/](R/README.md).
+- **Find sample/environmental inputs:** browse [data/](data/README.md).
+- **Check the metadata:** run the command below.
+- **Cite the work:** use [CITATION.cff](CITATION.cff).
 
-Metadata Branch/
+```bash
+python3 validate_metadata.py data
+```
 
-Metadata for 118 SLF samples and Environmental Data:
-Contains metadata files for the 118 spotted lanternfly samples used in the study, along with all associated environmental data. 
+This check uses Python's standard library and does not run genomic analyses or change input files.
 
-SLF_R_scripts Branch/
-   
-This script will contain all R scripts used for:
-Genetic diversity statistics (ROH,heterozygosity etc.)
-Population structure (PCA, Admixture, sNMF)
-Isolation by Distance / Environment (IBD, IBE)
-Genotype-environment association (RDA)
-Selection scan integration and GO term enrichment (pcadapt etc.)
+## Repository map
 
-Data Accessibility/
+| Location | Contents |
+| --- | --- |
+| `R/` | Population structure, diversity, demographic summaries, phylogenetic visualization, environmental association, and candidate-locus analyses |
+| `data/` | Sample metadata, original study environmental PC scores, and environmental source tables |
+| `Momi2_models.ipynb`, `momi2_all_model.py` | Demographic model exploration and fitting with momi2 |
+| `SLF_GATK_HPC_Pipeline_Final` | Historical whole-genome processing notes, including shell and Python sections |
+| `ANGSD_pipeline` | Historical ANGSD/ngsLD/PCAngsd workflow notes |
+| `Mt Dna Phylogeography Pipeline hpc` | Mitochondrial processing, consensus, alignment, and phylogenetic workflow |
+| `REPRODUCIBILITY.md` | Dependencies, workflow order, expected inputs, and execution limits |
+| `CHANGELOG.md` | Documentation and packaging changes |
 
-The raw whole genome sequencing data for 98 adult Spotted Lanternflies collected in USA, generated using the Illumina Novaseq 6000 platform, are publicly accessible in the NCBI Sequence Read Archive (SRA) under the project code PRJNA1136004. The 20 adult Spotted Lanternflies collected in Shanghai, China generated using the NovaSeq X Plus platform, are publicly accessible in the NCBI Sequence Read Archive (SRA) under the project code PRJNA1258978. 
+## Computational workflow
 
+1. Process whole-genome reads, align to the study reference, and call/filter variants; examine the GATK workflow notes.
+2. Use genotype-likelihood analyses where appropriate; examine the ANGSD workflow notes.
+3. Analyze diversity, population structure, geographic/environmental associations, and candidate loci with the R scripts.
+4. Fit and compare demographic models using the momi2 code and summarize their outputs in R.
+5. Process mitochondrial sequences and visualize phylogenetic/haplotype results.
 
-For any questions or issues related to this repository, please contact fm2371@nyu.edu.
+These are historical research scripts, not a single executable workflow. Some guides mix prose and languages; many analyses depend on study-specific paths or intermediate files. Follow the [reproducibility notes](REPRODUCIBILITY.md) before running them. Syntax checks do not establish that the full study has been reproduced.
+
+## Data access
+
+The study includes 98 U.S. and 20 Shanghai whole-genome samples. Raw sequencing reads are available through NCBI BioProjects [PRJNA1136004](https://www.ncbi.nlm.nih.gov/bioproject/PRJNA1136004) and [PRJNA1258978](https://www.ncbi.nlm.nih.gov/bioproject/PRJNA1258978), respectively. Reference-genome context: [Snead, Meng et al. 2025](https://doi.org/10.1038/s41597-025-04854-8). Use the exact reference assembly and filtering settings described in the study; do not silently substitute a different assembly.
+
+## Provenance and versions
+
+The `SLF_R_Scripts` and `Metadata_EnvData` branches are retained as historical records. Their relevant files are also available on the default branch. Packaging changes and limited syntax repairs are recorded in [CHANGELOG.md](CHANGELOG.md); no statistical models or study results were refitted for this release.
+
+## Credit and contact
+
+Study authors: Fang Meng, Anthony A. Snead, Aria Yang Zhang, Jason Munshi-South, and Kristin M. Winchell. External tools and packages retain their authorship and licenses; cite the original methods described in the paper.
+
+Questions: [Fang (Fallon) Meng](mailto:fm2371@nyu.edu). [Research portfolio](https://fallonme.github.io/).

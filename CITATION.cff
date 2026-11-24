@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use these analysis materials, please cite the associated paper."
+title: "SLF-Pop-Gen-MS: population genomics of spotted lanternfly invasion and urbanization"
+type: software
+url: "https://github.com/FallonMe/SLF-Pop-Gen-MS"
+authors:
+  - family-names: Meng
+    given-names: Fang
+    orcid: "https://orcid.org/0000-0002-9311-4298"
+preferred-citation:
+  type: article
+  title: "Cities as evolutionary incubators for the global spread of the spotted lanternfly"
+  authors:
+    - family-names: Meng
+      given-names: Fang
+    - family-names: Snead
+      given-names: Anthony A.
+    - family-names: Zhang
+      given-names: Aria Yang
+    - family-names: Munshi-South
+      given-names: Jason
+    - family-names: Winchell
+      given-names: Kristin M.
+  journal: "Proceedings of the Royal Society B: Biological Sciences"
+  year: 2026
+  volume: 293
+  issue: 2064
+  start: "20252292"
+  doi: "10.1098/rspb.2025.2292"

@@ -1,0 +1,32 @@
+# Credentials and local state
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.DS_Store
+._*
+__MACOSX/
+.Rhistory
+.RData
+.RDataTmp*
+.Rproj.user/
+.ipynb_checkpoints/
+__pycache__/
+*.py[cod]
+.venv/
+
+# Large raw sequencing/alignment inputs; use data archives
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
+*.bam
+*.bai
+*.cram
+*.crai
+
+# Local job/runtime outputs
+slurm-*.out
+slurm_*.out
+work/
